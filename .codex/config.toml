@@ -1,0 +1,6 @@
+# tailtest: required to enable hook support in Codex CLI.
+# Copy this file to <your-project>/.codex/config.toml
+# or merge into your existing config.toml.
+
+[features]
+codex_hooks = true

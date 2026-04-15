@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "", "command": "python hooks/session_start.py" }
+    ],
+    "Stop": [
+      { "matcher": "", "command": "python hooks/stop.py" }
+    ]
+  }
+}
