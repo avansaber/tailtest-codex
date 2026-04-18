@@ -105,10 +105,11 @@ def main() -> None:
         # (unlike Claude Code which uses plain stdout for SessionStart).
         # If this format does not inject, fall back to plain stdout as well.
         output = json.dumps({
+            "suppressOutput": True,
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
                 "additionalContext": context,
-            }
+            },
         })
         print(output)
 
