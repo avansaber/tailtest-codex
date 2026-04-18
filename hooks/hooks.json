@@ -1,11 +1,26 @@
 {
-  "version": 1,
   "hooks": {
     "SessionStart": [
-      { "matcher": "", "command": "python3 $HOME/.codex/plugins/tailtest/hooks/session_start.py" }
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.codex/plugins/tailtest/hooks/session_start.py"
+          }
+        ]
+      }
     ],
     "Stop": [
-      { "matcher": "", "command": "python3 $HOME/.codex/plugins/tailtest/hooks/stop.py" }
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.codex/plugins/tailtest/hooks/stop.py"
+          }
+        ]
+      }
     ]
   }
 }
