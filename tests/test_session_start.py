@@ -760,6 +760,33 @@ class TestBuildStyleContext:
         result = build_style_context(str(tmp_path), {})
         assert result is None
 
+    def test_returns_string_for_typescript_project(self, tmp_path):
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "billing.test.ts").write_text(
+            "import { describe, it, expect } from 'vitest';\n"
+            "describe('billing', () => { it('works', () => { expect(1).toBe(1); }); });\n"
+        )
+        runners = {"typescript": {"command": "vitest", "test_location": "src/"}}
+        result = build_style_context(str(tmp_path), runners)
+        assert result is not None
+        assert isinstance(result, str)
+
+    def test_returns_string_for_javascript_project(self, tmp_path):
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "billing.test.js").write_text(
+            "describe('billing', () => { it('works', () => {}); });\n"
+        )
+        runners = {"javascript": {"command": "jest", "test_location": "tests/"}}
+        result = build_style_context(str(tmp_path), runners)
+        assert result is not None
+
+    def test_returns_none_for_new_project_with_no_test_files(self, tmp_path):
+        runners = {"python": {"command": "pytest", "test_location": "tests/"}}
+        result = build_style_context(str(tmp_path), runners)
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # detect_monorepo

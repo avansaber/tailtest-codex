@@ -305,6 +305,56 @@ class TestLanguageNoneNotQueued:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Parametrized: every LANGUAGE_MAP extension is detected
+# ---------------------------------------------------------------------------
+
+
+_LANGUAGE_MAP_CASES = [
+    # Python
+    (".py", "python", "x = 1\n"),
+    (".pyx", "python", "cdef int x = 1\n"),
+    (".pyi", "python", "x: int\n"),
+    # JavaScript family
+    (".js", "javascript", "const x = 1;\n"),
+    (".jsx", "javascript", "const x = 1;\n"),
+    (".mjs", "javascript", "export const x = 1;\n"),
+    (".cjs", "javascript", "const x = 1;\n"),
+    (".vue", "javascript", "<template><div/></template>\n"),
+    (".svelte", "javascript", "<script>let x = 1;</script>\n"),
+    # TypeScript family
+    (".ts", "typescript", "const x: number = 1;\n"),
+    (".tsx", "typescript", "const x: number = 1;\n"),
+    (".mts", "typescript", "export const x: number = 1;\n"),
+    (".cts", "typescript", "const x: number = 1;\n"),
+    # Other runner-required
+    (".php", "php", "<?php $x = 1;\n"),
+    (".go", "go", "package main\n"),
+    (".rb", "ruby", "x = 1\n"),
+    (".rs", "rust", "fn main() {}\n"),
+    (".java", "java", "class Main {}\n"),
+    # Non-runner-required extras
+    (".cs", "csharp", "class Main {}\n"),
+    (".swift", "swift", "let x = 1\n"),
+    (".kt", "kotlin", "val x = 1\n"),
+    (".kts", "kotlin", "val x = 1\n"),
+]
+
+
+class TestAllLanguageMapExtensions:
+    @pytest.mark.parametrize("ext,expected_lang,content", _LANGUAGE_MAP_CASES)
+    def test_extension_detected_with_correct_language(self, tmp_path, ext, expected_lang, content):
+        baseline = time.time() - 5
+        src = tmp_path / f"source{ext}"
+        src.write_text(content)
+        results = _sweep(tmp_path, baseline)
+        paths = [r["path"] for r in results]
+        filename = f"source{ext}"
+        assert filename in paths, f"{ext} file not detected"
+        entry = next(r for r in results if r["path"] == filename)
+        assert entry["language"] == expected_lang, f"{ext}: expected {expected_lang}, got {entry['language']}"
+
+
 class TestMultipleLanguages:
     def test_python_and_typescript_both_queued(self, tmp_path):
         baseline = time.time() - 5

@@ -221,6 +221,87 @@ class TestNoSessionJson:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# RUNNER_REQUIRED_LANGUAGES enforcement
+# ---------------------------------------------------------------------------
+
+
+class TestRunnerRequiredLanguagesEnforced:
+    def test_go_file_not_queued_without_runner(self, tmp_path):
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time() - 10,
+            runners={},  # no go runner
+        )
+        _write_session(tmp_path, session)
+        (tmp_path / "handler.go").write_text("package main\nfunc main() {}\n")
+        out = _run_hook(tmp_path, _event(tmp_path))
+        assert "decision" not in out  # no runner = silently skipped
+
+    def test_rust_file_not_queued_without_runner(self, tmp_path):
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time() - 10,
+            runners={},
+        )
+        _write_session(tmp_path, session)
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "lib.rs").write_text("pub fn add(a: i32, b: i32) -> i32 { a + b }\n")
+        out = _run_hook(tmp_path, _event(tmp_path))
+        assert "decision" not in out
+
+    def test_php_file_not_queued_without_runner(self, tmp_path):
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time() - 10,
+            runners={},
+        )
+        _write_session(tmp_path, session)
+        (tmp_path / "Invoice.php").write_text("<?php class Invoice {}\n")
+        out = _run_hook(tmp_path, _event(tmp_path))
+        assert "decision" not in out
+
+    def test_go_file_queued_when_runner_configured(self, tmp_path):
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time() - 10,
+            runners={"go": {"command": "go test", "test_location": "./..."}},
+        )
+        _write_session(tmp_path, session)
+        (tmp_path / "handler.go").write_text("package main\nfunc main() {}\n")
+        out = _run_hook(tmp_path, _event(tmp_path))
+        assert out.get("decision") == "block"
+        assert "handler.go" in out["reason"]
+
+    def test_ruby_file_not_queued_without_runner(self, tmp_path):
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time() - 10,
+            runners={},
+        )
+        _write_session(tmp_path, session)
+        (tmp_path / "invoice.rb").write_text("class Invoice; end\n")
+        out = _run_hook(tmp_path, _event(tmp_path))
+        assert "decision" not in out
+
+    def test_java_file_not_queued_without_runner(self, tmp_path):
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time() - 10,
+            runners={},
+        )
+        _write_session(tmp_path, session)
+        (tmp_path / "Invoice.java").write_text("public class Invoice {}\n")
+        out = _run_hook(tmp_path, _event(tmp_path))
+        assert "decision" not in out
+
+
+# ---------------------------------------------------------------------------
+# Duplicate pending files not re-added
+# ---------------------------------------------------------------------------
+
+
 class TestDuplicatePendingFilesNotAdded:
     def test_existing_pending_not_duplicated(self, tmp_path):
         src = tmp_path / "billing.py"
