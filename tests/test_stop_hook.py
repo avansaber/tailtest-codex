@@ -74,7 +74,7 @@ class TestStopHookActiveGuard:
     def test_stop_hook_active_returns_continue(self, tmp_path):
         _write_session(tmp_path, _base_session(tmp_path))
         out = _run_hook(tmp_path, _event(tmp_path, stop_hook_active=True))
-        assert out["decision"] == "continue"
+        assert "decision" not in out  # empty {} = continue per Codex schema
 
     def test_stop_hook_active_does_not_modify_session(self, tmp_path):
         session = _base_session(tmp_path)
@@ -108,7 +108,7 @@ class TestNoFilesChanged:
         _write_session(tmp_path, session)
         # No source files written -- nothing changed after turn_start_mtime
         out = _run_hook(tmp_path, _event(tmp_path))
-        assert out["decision"] == "continue"
+        assert "decision" not in out  # empty {} = continue per Codex schema
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +165,7 @@ class TestPausedSession:
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
         out = _run_hook(tmp_path, _event(tmp_path))
-        assert out["decision"] == "continue"
+        assert "decision" not in out  # empty {} = continue per Codex schema
 
     def test_paused_session_does_not_queue_files(self, tmp_path):
         session = _base_session(tmp_path, paused=True, turn_start_mtime=time.time() - 10)
@@ -203,7 +203,7 @@ class TestNoSessionJson:
     def test_no_session_json_returns_continue(self, tmp_path):
         # No session.json created -- graceful no-op
         out = _run_hook(tmp_path, _event(tmp_path))
-        assert out["decision"] == "continue"
+        assert "decision" not in out  # empty {} = continue per Codex schema
 
     def test_no_session_json_exits_cleanly(self, tmp_path):
         import subprocess
@@ -248,4 +248,4 @@ class TestDuplicatePendingFilesNotAdded:
         _write_session(tmp_path, session)
         out = _run_hook(tmp_path, _event(tmp_path))
         # All detected files were already in pending -- no new files, so continue
-        assert out["decision"] == "continue"
+        assert "decision" not in out  # empty {} = continue per Codex schema

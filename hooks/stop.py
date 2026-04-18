@@ -106,14 +106,14 @@ def main() -> None:
     # Loop guard: if Codex set stop_hook_active, this turn was triggered by
     # a previous hook block.  Let it continue so tests can run.
     if event.get("stop_hook_active", False):
-        print(json.dumps({"decision": "continue"}))
+        print(json.dumps({}))
         return
 
     # Load session -- graceful no-op if missing
     session = load_session(project_root)
     if not session.get("runners") and not session.get("session_id"):
         # No active tailtest session
-        print(json.dumps({"decision": "continue"}))
+        print(json.dumps({}))
         return
 
     # Paused session: update mtime timestamp and continue
@@ -123,7 +123,7 @@ def main() -> None:
             save_session(project_root, session)
         except OSError:
             pass
-        print(json.dumps({"decision": "continue"}))
+        print(json.dumps({}))
         return
 
     turn_start_mtime: float = session.get("turn_start_mtime", 0.0)
@@ -149,7 +149,7 @@ def main() -> None:
             save_session(project_root, session)
         except OSError:
             pass
-        print(json.dumps({"decision": "continue"}))
+        print(json.dumps({}))
         return
 
     # Merge into pending_files (deduplicate by path)
@@ -176,7 +176,7 @@ def main() -> None:
 
     if not newly_queued:
         # All changed files were already pending -- nothing new to block for
-        print(json.dumps({"decision": "continue"}))
+        print(json.dumps({}))
         return
 
     n = len(newly_queued)
