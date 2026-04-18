@@ -345,25 +345,19 @@ class TestBuildBootstrapNote:
 
 
 class TestBuildStartupContext:
-    def test_includes_agents_md(self):
-        runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}}
-        ctx = build_startup_context("/tmp/proj", runners, "standard", "# tailtest\nInstructions here.")
-        assert "# tailtest" in ctx
-        assert "Instructions here." in ctx
-
     def test_includes_runner_summary(self):
         runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}}
-        ctx = build_startup_context("/tmp/proj", runners, "standard", "")
+        ctx = build_startup_context("/tmp/proj", runners, "standard")
         assert "pytest" in ctx
         assert "tests/" in ctx
 
     def test_includes_depth(self):
-        ctx = build_startup_context("/tmp/proj", {}, "thorough", "")
+        ctx = build_startup_context("/tmp/proj", {}, "thorough")
         assert "thorough" in ctx
 
     def test_bootstrap_note_included_when_needed(self):
         runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/", "needs_bootstrap": True}}
-        ctx = build_startup_context("/tmp/proj", runners, "standard", "")
+        ctx = build_startup_context("/tmp/proj", runners, "standard")
         assert "bootstrap" in ctx.lower() or "pytest" in ctx
 
 
@@ -373,27 +367,23 @@ class TestBuildStartupContext:
 
 
 class TestBuildCompactContext:
-    def test_includes_agents_md(self):
-        ctx = build_compact_context("/tmp/proj", {}, "standard", [], {}, "# tailtest\nRules.")
-        assert "# tailtest" in ctx
-
     def test_mentions_compaction(self):
-        ctx = build_compact_context("/tmp/proj", {}, "standard", [], {}, "")
+        ctx = build_compact_context("/tmp/proj", {}, "standard", [], {})
         assert "compaction" in ctx
 
     def test_shows_pending_files(self):
         pending = [{"path": "main.py", "language": "python", "status": "new-file"}]
-        ctx = build_compact_context("/tmp/proj", {}, "standard", pending, {}, "")
+        ctx = build_compact_context("/tmp/proj", {}, "standard", pending, {})
         assert "main.py" in ctx
         assert "1 file(s) pending" in ctx
 
     def test_shows_fix_attempts(self):
-        ctx = build_compact_context("/tmp/proj", {}, "standard", [], {"main.py": 2}, "")
+        ctx = build_compact_context("/tmp/proj", {}, "standard", [], {"main.py": 2})
         assert "main.py" in ctx
         assert "2" in ctx
 
     def test_no_pending_no_pending_line(self):
-        ctx = build_compact_context("/tmp/proj", {}, "standard", [], {}, "")
+        ctx = build_compact_context("/tmp/proj", {}, "standard", [], {})
         assert "pending" not in ctx
 
 

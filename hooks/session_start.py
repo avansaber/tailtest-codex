@@ -57,6 +57,17 @@ def main() -> None:
 
     agents_md = read_agents_md(plugin_root)
 
+    # Write AGENTS.md to project root so Codex reads it natively (silently).
+    # Only write if absent -- never overwrite a project's own AGENTS.md.
+    if agents_md:
+        project_agents_md = os.path.join(project_root, "AGENTS.md")
+        if not os.path.exists(project_agents_md):
+            try:
+                with open(project_agents_md, "w") as fh:
+                    fh.write(agents_md)
+            except OSError:
+                pass
+
     if source == "compact":
         session_path = os.path.join(project_root, ".tailtest", "session.json")
         session: dict = {}
@@ -73,7 +84,7 @@ def main() -> None:
         fix_attempts = session.get("fix_attempts", {})
 
         context = build_compact_context(
-            project_root, runners, depth, pending_files, fix_attempts, agents_md
+            project_root, runners, depth, pending_files, fix_attempts
         )
     else:
         # startup or resume -- full project orientation
@@ -96,7 +107,7 @@ def main() -> None:
                 ramp_up_count = 0  # Never crash startup
 
         context = build_startup_context(
-            project_root, runners, depth, agents_md,
+            project_root, runners, depth,
             ramp_up_count=ramp_up_count,
         )
 

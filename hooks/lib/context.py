@@ -201,15 +201,10 @@ def build_startup_context(
     project_root: str,
     runners: dict,
     depth: str,
-    agents_md: str,
     ramp_up_count: int = 0,
 ) -> str:
     """Build the full additionalContext payload for startup/resume."""
     lines: list[str] = []
-
-    if agents_md:
-        lines.append(agents_md)
-        lines.append("")
 
     runner_summaries = []
     for lang, info in runners.items():
@@ -250,14 +245,9 @@ def build_compact_context(
     depth: str,
     pending_files: list[dict],
     fix_attempts: dict,
-    agents_md: str,
 ) -> str:
     """Build the additionalContext payload for post-compaction re-injection."""
     lines: list[str] = []
-
-    if agents_md:
-        lines.append(agents_md)
-        lines.append("")
 
     runner_summaries = []
     for lang, info in runners.items():
