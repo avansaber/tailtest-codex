@@ -6,6 +6,8 @@ import os
 from typing import Optional
 
 from hooks.lib.filter import RUNNER_REQUIRED_LANGUAGES, _norm
+from hooks.lib.last_failures_formatter import format_last_failures
+from hooks.lib.session import load_session
 
 
 def get_test_file_path(
@@ -217,6 +219,12 @@ def build_startup_context(
         f"tailtest: session started. Project root: {project_root}. "
         f"Runners: {runner_text}. Depth: {depth}."
     )
+
+    session = load_session(project_root)
+    last_failures = session.get("last_failures", [])
+    failure_line = format_last_failures(last_failures)
+    if failure_line:
+        lines.append(failure_line)
 
     if ramp_up_count > 0:
         lines.append(

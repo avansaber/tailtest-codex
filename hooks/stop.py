@@ -32,6 +32,7 @@ from hooks.lib.filter import (
     is_filtered,
     load_ignore_patterns,
 )
+from hooks.lib.last_failures_formatter import compute_last_failures
 from hooks.lib.session import load_session, save_session
 
 
@@ -143,6 +144,7 @@ def main() -> None:
 
     # Update turn_start_mtime now (before writing session) so next turn baseline is correct
     session["turn_start_mtime"] = time.time()
+    session["last_failures"] = compute_last_failures(session)
 
     if not qualified:
         try:
