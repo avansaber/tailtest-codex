@@ -6,6 +6,7 @@ import os
 from typing import Optional
 
 from hooks.lib.filter import RUNNER_REQUIRED_LANGUAGES, _norm
+from hooks.lib.history_manager import format_history_context
 from hooks.lib.last_failures_formatter import format_last_failures
 from hooks.lib.session import load_session
 
@@ -225,6 +226,11 @@ def build_startup_context(
     failure_line = format_last_failures(last_failures)
     if failure_line:
         lines.append(failure_line)
+
+    # A3/H6: cross-session history context
+    history_line = format_history_context(project_root)
+    if history_line:
+        lines.append(history_line)
 
     if ramp_up_count > 0:
         lines.append(

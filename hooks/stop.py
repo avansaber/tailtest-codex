@@ -33,6 +33,7 @@ from hooks.lib.filter import (
     load_ignore_patterns,
 )
 from hooks.lib.complexity_scorer import complexity_context_note, score_file
+from hooks.lib.history_manager import append_session_to_history
 from hooks.lib.last_failures_formatter import compute_last_failures
 from hooks.lib.scenario_log import append_to_log, build_scenario_entries
 from hooks.lib.session import load_session, save_session
@@ -152,6 +153,11 @@ def main() -> None:
     new_entries = build_scenario_entries(session)
     if new_entries:
         session["scenario_log"] = append_to_log(session.get("scenario_log", []), new_entries)
+        # A1: persist to cross-session history
+        try:
+            append_session_to_history(project_root, new_entries)
+        except Exception:
+            pass
 
     # H1: store complexity scores for newly qualified files
     configured_depth = session.get("depth", "standard")
