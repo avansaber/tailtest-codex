@@ -32,7 +32,9 @@ from hooks.lib.filter import (
     is_filtered,
     load_ignore_patterns,
 )
+from hooks.lib.complexity_scorer import complexity_context_note, score_file
 from hooks.lib.last_failures_formatter import compute_last_failures
+from hooks.lib.scenario_log import append_to_log, build_scenario_entries
 from hooks.lib.session import load_session, save_session
 
 
@@ -146,6 +148,24 @@ def main() -> None:
     session["turn_start_mtime"] = time.time()
     session["last_failures"] = compute_last_failures(session)
 
+    # H3: append scenario log entries
+    new_entries = build_scenario_entries(session)
+    if new_entries:
+        session["scenario_log"] = append_to_log(session.get("scenario_log", []), new_entries)
+
+    # H1: store complexity scores for newly qualified files
+    configured_depth = session.get("depth", "standard")
+    scores = session.get("complexity_scores", {})
+    for entry in qualified:
+        p = entry.get("path", "")
+        if p:
+            try:
+                sc, _ = score_file(os.path.join(project_root, p))
+                scores[p] = sc
+            except Exception:
+                pass
+    session["complexity_scores"] = scores
+
     if not qualified:
         try:
             save_session(project_root, session)
@@ -182,9 +202,13 @@ def main() -> None:
         return
 
     n = len(newly_queued)
-    paths_str = ", ".join(newly_queued[:5])
+    file_parts = []
+    for p in newly_queued[:5]:
+        hint = complexity_context_note(os.path.join(project_root, p), configured_depth)
+        file_parts.append(f"{p}{' -- ' + hint if hint else ''}")
     if len(newly_queued) > 5:
-        paths_str += f" (+{len(newly_queued) - 5} more)"
+        file_parts.append(f"+{len(newly_queued) - 5} more")
+    paths_str = ", ".join(file_parts)
 
     reason = (
         f"tailtest: queued {n} file(s) ({paths_str}). "
