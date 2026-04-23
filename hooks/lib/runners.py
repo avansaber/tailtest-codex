@@ -268,10 +268,18 @@ def detect_java_runner(directory: str, project_root: str) -> Optional[dict]:
     except OSError:
         pass
 
+    # V12.3: prefer src/test/kotlin/ for Kotlin-only test trees.
+    has_java_tests = os.path.isdir(os.path.join(directory, "src", "test", "java"))
+    has_kotlin_tests = os.path.isdir(os.path.join(directory, "src", "test", "kotlin"))
+    if has_kotlin_tests and not has_java_tests:
+        test_location = "src/test/kotlin/"
+    else:
+        test_location = "src/test/java/"
+
     runner: dict = {
         "command": command,
         "args": [],
-        "test_location": "src/test/java/",
+        "test_location": test_location,
     }
     if framework:
         runner["framework"] = framework

@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.4.0] -- 2026-04-23
+
+Kotlin language support. 340 tests.
+
+**Kotlin baseline scenarios (R1):** Kotlin row added: `null`, empty collection, zero, negative, `Result.failure`.
+
+**Kotlin test path resolution:** Tests target `src/test/kotlin/{Name}Test.kt`. Java runner picks `src/test/kotlin/` when only the Kotlin test directory exists; mixed Java+Kotlin projects default to `src/test/java/` with per-source-file path overrides.
+
+**Kotlin Scenario rules:** Covers `kotlin.test` assertions, JUnit 5 lifecycle, `runTest { }` for coroutines, `sealed class` exhaustiveness, `data class` equality, `Result<T>` testing.
+
 ## [4.3.0] -- 2026-04-23
 
 NestJS and Flask framework support. 337 tests.
