@@ -12,6 +12,7 @@ import pytest
 from hooks.lib.runners import (
     create_session,
     detect_deno_runner,
+    detect_dotnet_runner,
     detect_go_runner,
     detect_java_runner,
     detect_monorepo,
@@ -764,6 +765,83 @@ class TestDetectJavaRunner:
         (tmp_path / "src" / "test" / "java").mkdir(parents=True)
         result = detect_java_runner(str(tmp_path), str(tmp_path))
         assert result["test_location"] == "src/test/java/"
+
+
+# ---------------------------------------------------------------------------
+# detect_dotnet_runner (V12.4)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectDotnetRunner:
+    def test_no_dotnet_files_returns_none(self, tmp_path):
+        assert detect_dotnet_runner(str(tmp_path), str(tmp_path)) is None
+
+    def test_csproj_at_root_detected(self, tmp_path):
+        (tmp_path / "MyApp.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
+        assert result is not None
+        assert result["command"] == "dotnet test"
+
+    def test_sln_at_root_detected(self, tmp_path):
+        (tmp_path / "MyApp.sln").write_text("Microsoft Visual Studio Solution File\n")
+        result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
+        assert result is not None
+
+    def test_layout_flat_default_tests_dir(self, tmp_path):
+        (tmp_path / "MyApp.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
+        assert result["test_location"] == "tests/"
+        assert "test_projects" not in result
+
+    def test_layout_single_test_project_sibling(self, tmp_path):
+        api = tmp_path / "MyApp.Api"
+        api.mkdir()
+        (api / "MyApp.Api.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        tests = tmp_path / "MyApp.Api.Tests"
+        tests.mkdir()
+        (tests / "MyApp.Api.Tests.csproj").write_text(
+            '<Project Sdk="Microsoft.NET.Sdk">\n'
+            '  <ItemGroup>\n'
+            '    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />\n'
+            '  </ItemGroup>\n'
+            '</Project>\n'
+        )
+        result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
+        assert result is not None
+        assert result["test_location"] == "MyApp.Api.Tests/"
+        assert result["test_projects"] == ["MyApp.Api.Tests"]
+
+    def test_layout_multiple_test_projects(self, tmp_path):
+        for proj in ("MyApp.Api", "MyApp.Core"):
+            d = tmp_path / proj
+            d.mkdir()
+            (d / f"{proj}.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+            tests_d = tmp_path / f"{proj}.Tests"
+            tests_d.mkdir()
+            (tests_d / f"{proj}.Tests.csproj").write_text(
+                '<Project Sdk="Microsoft.NET.Sdk">\n'
+                '  <ItemGroup>\n'
+                '    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />\n'
+                '  </ItemGroup>\n'
+                '</Project>\n'
+            )
+        result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
+        assert result["test_projects"] == ["MyApp.Api.Tests", "MyApp.Core.Tests"]
+        assert result["test_location"] == "MyApp.Api.Tests/"
+
+    def test_bin_obj_dirs_skipped_during_walk(self, tmp_path):
+        (tmp_path / "MyApp.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        obj_path = tmp_path / "obj" / "Debug" / "Stale.Tests"
+        obj_path.mkdir(parents=True)
+        (obj_path / "Stale.Tests.csproj").write_text('<Project></Project>\n')
+        result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
+        assert "test_projects" not in result or "Stale.Tests" not in str(result.get("test_projects", []))
+
+
+class TestDetectMonorepoDotnet:
+    def test_sln_marks_monorepo(self, tmp_path):
+        (tmp_path / "MyApp.sln").write_text("Microsoft Visual Studio Solution File\n")
+        assert detect_monorepo(str(tmp_path)) is True
 
 
 # ---------------------------------------------------------------------------
