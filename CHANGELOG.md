@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.6.0] -- 2026-04-23
+
+Install helper + docs clarity. No code or detection changes.
+
+**New:** `scripts/init.sh` -- run inside any project to set up tailtest in that project. Creates `.codex/hooks.json` pointing at the plugin's hook scripts; idempotent; writes a `.hooks.json.tailtest` sidecar instead of overwriting existing config.
+
+**Docs:** README and tailtest.com/docs/codex install sections rewritten. New three-step flow: (1) clone plugin once, (2) enable `codex_hooks` feature flag once, (3) run `init.sh` inside each project. Replaces the previous ambiguous "copy two files" instructions.
+
+**Why:** live Codex TUI validation on 2026-04-23 surfaced that users following the previous docs could end up with scripts installed but hooks not firing, because the per-project `.codex/hooks.json` step was easy to miss. The init helper closes that gap; the manual path is still documented as a fallback.
+
+**Detection / rule / hook code unchanged from v4.5.0.** 348 tests still passing.
+
 ## [4.5.0] -- 2026-04-23
 
 C# / .NET language support. 348 tests.
