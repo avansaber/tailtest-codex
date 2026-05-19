@@ -35,6 +35,7 @@ from hooks.lib.filter import (
 from hooks.lib.complexity_scorer import complexity_context_note, score_file
 from hooks.lib.history_manager import append_session_to_history
 from hooks.lib.last_failures_formatter import compute_last_failures
+from hooks.lib.scanner import sweep_mtime_changed
 from hooks.lib.scenario_log import append_to_log, build_scenario_entries
 from hooks.lib.session import load_session, save_session
 
@@ -48,53 +49,11 @@ def sweep_changed_files(
 
     Returns a list of dicts: [{path: rel_path, language: lang}, ...]
     Only files that pass is_filtered() and have a known language are returned.
+
+    Thin wrapper kept for back-compat with the v4.7-era test suite. New
+    callers should import sweep_mtime_changed from lib.scanner directly.
     """
-    changed: list[dict] = []
-
-    # Directories to prune during the walk (performance bound)
-    _skip_dirs = {
-        "node_modules", ".venv", "venv", ".env", "env",
-        "dist", "build", "generated", ".git", "vendor",
-        "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-        "target", ".cargo", "coverage", ".nyc_output",
-        ".next", ".nuxt", ".svelte-kit", ".tailtest",
-        "migrations", "k8s", "deploy", "infra",
-    }
-
-    for root, dirnames, filenames in os.walk(project_root):
-        # Prune in-place to avoid descending into noise dirs
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in _skip_dirs and not d.startswith(".")
-        ]
-
-        for filename in filenames:
-            abs_path = os.path.join(root, filename)
-
-            # Skip symlinks
-            if os.path.islink(abs_path):
-                continue
-
-            try:
-                mtime = os.path.getmtime(abs_path)
-            except OSError:
-                continue
-
-            # Must be strictly greater (file at exactly turn_start_mtime is pre-existing)
-            if mtime <= turn_start_mtime:
-                continue
-
-            language = detect_language(abs_path)
-            if not language:
-                continue
-
-            if is_filtered(abs_path, project_root, ignore_patterns):
-                continue
-
-            rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
-            changed.append({"path": rel_path, "language": language})
-
-    return changed
+    return sweep_mtime_changed(project_root, turn_start_mtime, ignore_patterns)
 
 
 def main() -> None:

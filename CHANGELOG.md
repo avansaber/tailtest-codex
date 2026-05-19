@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.9.0] -- 2026-05-19
+
+PostToolUse migration. Per-edit feedback alongside the existing turn-end Stop sweep. 400 tests (was 380; +20 PostToolUse tests).
+
+**New `hooks/post_tool_use.py`:**
+- Fires after every file-mutating Codex tool call (`apply_patch`, `patch`, plus shell-style tools via mtime fallback).
+- For `apply_patch` payloads, parses two envelope forms: standard unified diff (`diff --git a/path b/path`) and Codex's `*** Update File: path` / `*** Add File: path` form.
+- For shell tools or unparseable patches, falls back to an mtime sweep since the last PostToolUse fire. This catches files written via redirection, build steps, etc.
+- Applies the same intelligence filter as the Stop hook (`is_filtered`, `detect_language`, runner-required gating).
+- Loop guard: files that appear in `generated_tests` values are skipped, preventing infinite test loops when the agent writes a test file.
+- Honors the existing pause state and silently exits on inactive sessions.
+- Output uses the `{"hookSpecificOutput": {"additionalContext": "..."}}` envelope so the agent sees newly queued files mid-turn without the hook blocking the turn.
+
+**Stop hook unchanged in behavior:** still sweeps mtimes at end of turn as a safety net, picking up anything PostToolUse missed. The mtime walker now lives in `hooks/lib/scanner.py` so both hooks share the same implementation; `stop.py` keeps a thin back-compat wrapper named `sweep_changed_files` so existing tests still pass.
+
+**`hooks/hooks.json` updated:** now registers SessionStart + PostToolUse + Stop. The PostToolUse entry uses `matcher: ".*"` to fire on every tool. SessionStart matcher set to `"startup"` to match the documented Codex hooks spec.
+
+**User-visible UX change:** Codex no longer waits until the turn boundary to surface queued files. As soon as `apply_patch` writes a file, the agent receives an `additionalContext` note listing it. Per-edit responsiveness matches the Claude Code variant.
+
+**Note on Codex `codex exec` mode:** hooks fire only in interactive `codex` sessions; `codex exec` (non-interactive batch mode) does not load hook configuration as of Codex CLI 0.130.0. This is an upstream Codex limitation, not a tailtest issue. Manual validation in real interactive sessions remains the canonical smoke test.
+
 ## [4.8.0] -- 2026-05-19
 
 Codex CLI parity refresh against Codex 0.129.0+. Docs + plugin manifest + marketplace structure. No detection / rule / hook code changes; 380 tests still passing.

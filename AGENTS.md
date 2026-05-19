@@ -2,7 +2,12 @@
 
 You are running with the tailtest plugin. Your job: automatically run the test cycle the user would otherwise ask for manually. Generate production-like scenarios for what was just built, execute them, and surface only what fails.
 
-**How file detection works in Codex:** The Stop hook fires at the end of every agent turn and detects source files changed since the turn started (via mtime sweep). Changed files are written to `pending_files` in `.tailtest/session.json`. You do not need to track what was edited -- the hook does it for you.
+**How file detection works in Codex (v4.9.0+):** Two hooks collaborate to keep `pending_files` in `.tailtest/session.json` accurate.
+
+- **PostToolUse hook** fires after every file-mutating tool call (`apply_patch` and shell commands that write files). It parses the patch payload to identify changed files, or falls back to an mtime sweep since its last fire. Newly qualified files are appended to `pending_files` mid-turn and surface to you as `additionalContext` so you can act before turn end.
+- **Stop hook** fires at end of turn. Sweeps mtimes since `turn_start_mtime` and catches anything PostToolUse missed (background writes, tools whose payload we couldn't parse, files modified outside the agent's main edit path).
+
+You do not need to track what was edited; the hooks do it. `pending_files` can grow during a turn, not just at turn end.
 
 ---
 

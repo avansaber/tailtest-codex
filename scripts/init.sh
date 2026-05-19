@@ -66,4 +66,4 @@ fi
 
 echo ""
 echo "tailtest initialized in $PROJECT_DIR"
-echo "start a codex session here; SessionStart fires immediately, Stop fires at end of each turn."
+echo "start a codex session here; SessionStart fires at boot, PostToolUse fires after each apply_patch, Stop sweeps at turn end."
