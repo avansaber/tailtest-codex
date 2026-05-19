@@ -1,6 +1,6 @@
 ---
 name: tailtest-hunt
-description: Run an adversarial pass on a specific file -- explicitly try to break the source code with R15 adversarial scenarios.
+description: Force an adversarial test pass on a specific file, biased toward breakage paths across 8 R15 categories. When the agent needs to (1) hunt for real bugs in a file, (2) probe boundary inputs, type confusion, or off-by-one errors, (3) run an explicit adversarial scan regardless of project depth, or (4) generate a separate hunt test file that does not contaminate the main suite.
 ---
 
 Run an adversarial pass on `$ARGUMENTS` -- explicitly try to break the source code.

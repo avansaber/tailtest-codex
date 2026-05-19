@@ -1,6 +1,6 @@
 ---
 name: summary
-description: Print a plain-text summary of this tailtest session and write it to .tailtest/reports/.
+description: Print a plain-text summary of this tailtest session and write it to .tailtest/reports/. When the agent needs to (1) show what tailtest did this session, (2) list generated tests and their outcomes, (3) save a session snapshot to disk for review, or (4) respond to "show summary" / "what did tailtest do".
 ---
 
 Show a summary of this tailtest session.

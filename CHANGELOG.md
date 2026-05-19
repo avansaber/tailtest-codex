@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.8.0] -- 2026-05-19
+
+Codex CLI parity refresh against Codex 0.129.0+. Docs + plugin manifest + marketplace structure. No detection / rule / hook code changes; 380 tests still passing.
+
+**Docs cleanup (Phase A):**
+- README and `tailtest.com/docs/codex` install sections no longer instruct users to set `[features].codex_hooks = true`. Hooks reached GA in Codex 0.129.0 (default-on); the legacy alias still works but emits a deprecation warning every session. Older-version subsection added that documents the post-deprecation `[features].hooks = true` flag for users pinned to pre-0.129.0 releases.
+- `scripts/init.sh` feature-flag check rewritten. Silent on current Codex defaults; emits a clean deprecation notice only when the user's `~/.codex/config.toml` still has the legacy `codex_hooks` key. Header comment updated to reference the new key.
+
+**Plugin manifest + marketplace structure (Phase B):**
+- `.codex-plugin/plugin.json` updated to current Codex spec form: `hooks` and `skills` as string paths instead of object/array forms. Version bumped to 4.8.0. Added `interface` block (displayName, descriptions, capabilities, defaultPrompt, brandColor) so the plugin renders properly in Codex's `/plugins` browser and any marketplace listing.
+- New `.agents/plugins/marketplace.json` declares this repo as a single-plugin marketplace named `avansaber-tailtest`. Users can now register the plugin in one command: `codex plugin marketplace add avansaber/tailtest-codex`. The existing `git clone` + `init.sh` flow continues to work unchanged.
+- **Important honest framing:** marketplace install replaces only the `git clone` step. Users still need to run `init.sh` per project for hooks to fire, because Codex's `plugin_hooks` feature (which would auto-register plugin-bundled hooks) is still in development upstream. When that ships stable, init.sh will be retired. Until then, both install paths require the per-project init step.
+
+**Skills polish (Phase D):**
+- All 5 skill files in `skills/tailtest/` got their frontmatter descriptions rewritten to the "When the agent needs to (1)... (2)... (3)..." pattern used by marketplace-quality plugins. This improves how the skills score in Codex's `@`-mention picker against natural-language user phrases. File bodies are unchanged.
+
 ## [4.7.0] -- 2026-04-25
 
 Adversarial test mode (V13). 380 tests.

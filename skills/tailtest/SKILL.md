@@ -1,6 +1,6 @@
 ---
 name: tailtest
-description: Run tailtest on a specific file -- generate test scenarios, write the test file, execute, and report failures.
+description: Generate test scenarios, write the test file, and run it for a specific source file using the tailtest R1-R15 rule layer. When the agent needs to (1) cover a file the Stop hook skipped, (2) regenerate tests after refactoring, (3) test a legacy file Codex did not modify this session, or (4) explicitly run tailtest on a named file.
 ---
 
 Generate or update tests for $ARGUMENTS.
