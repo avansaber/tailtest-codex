@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.9.1] -- 2026-05-26
+
+Plugin icon for the Codex marketplace display.
+
+- Added `assets/icon.svg` (512x512, rounded-square tile with the tailtest shield + checkmark mark, emerald on near-black). Reads cleanly at marketplace tile sizes (32px, 64px, 128px).
+- `.codex-plugin/plugin.json` now references the icon via `interface.composerIcon = "./assets/icon.svg"`. Per the Codex plugin manifest spec; renders in the Codex app composer / marketplace browser.
+- No behavioral changes. 400 tests still passing.
+
+Triggered by `tailtest-codex#5` (thanks to `@internet-dot` for the report and the concrete instructions).
+
 ## [4.9.0] -- 2026-05-19
 
 PostToolUse migration. Per-edit feedback alongside the existing turn-end Stop sweep. 400 tests (was 380; +20 PostToolUse tests).
