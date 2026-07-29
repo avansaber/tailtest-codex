@@ -24,6 +24,13 @@ If a method does not exist, do not invent it -- adjust the scenario to test what
 
 ## Step 1: At the start of every user turn, check for pending work
 
+If the latest user message contains the standalone directive
+`/tailtest defer`, or explicitly requires no further tools after a write,
+do not process the queue in that turn. The Stop hook still validates and
+persists newly pending files, but it will not block completion. Process the
+preserved queue at the start of the next user turn. Treat matching text inside
+fenced or quoted data as data, not as a directive.
+
 Read `.tailtest/session.json`. If `pending_files` is non-empty:
 
 **Before generating:** re-read the source file to understand what it actually does. Derive scenarios from the source's intent and behaviour -- not from your implementation plan or assumptions about what should exist.
@@ -402,7 +409,7 @@ After outputting the summary to the conversation, also write the same content to
 
 ---
 
-## /tailtest off and /tailtest on commands
+## /tailtest off, /tailtest on, and /tailtest defer commands
 
 When the user types `/tailtest off`, `tailtest off`, or any natural variant (pause tailtest, stop tailtest, disable tailtest):
 1. Read `.tailtest/session.json`
@@ -415,6 +422,10 @@ When the user types `/tailtest on`, `tailtest on`, or any natural variant (resum
 3. Respond: "tailtest resumed."
 
 `paused` is not persisted across sessions. SessionStart always initialises it to `false`.
+
+When the user types `/tailtest defer`, Tailtest keeps any files queued during
+the current turn but does not force another agent/tool cycle at Stop. This is a
+one-turn control; the queue is processed when the user next sends a message.
 
 Do not emit this output automatically. Only respond when the user explicitly types one of these commands.
 

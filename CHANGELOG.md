@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- Stop now honors `/tailtest defer` and explicit no-further-tools user directives after persisting the validated queue, while default turns continue to block on newly queued work.
+- Defer detection reads only the bounded latest user message from a Codex-owned transcript; assistant text, fenced examples, and external transcript paths fail closed.
+- 407 tests passing.
+
 ## [4.9.1] -- 2026-05-26
 
 Plugin icon for the Codex marketplace display.
