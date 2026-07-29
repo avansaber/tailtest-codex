@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Optional
 
@@ -9,6 +10,35 @@ from hooks.lib.filter import RUNNER_REQUIRED_LANGUAGES, _norm
 from hooks.lib.history_manager import format_history_context
 from hooks.lib.last_failures_formatter import format_last_failures
 from hooks.lib.session import load_session
+
+_MAX_UNTRUSTED_JSON_CHARS = 3000
+_MAX_CONTEXT_ITEMS = 5
+
+
+def render_untrusted_file_data(entries: list[dict]) -> str:
+    """Render repository-derived file metadata as bounded JSON data."""
+    payload = [
+        {
+            "path": entry.get("path", ""),
+            "status": entry.get("status", ""),
+            "hint": entry.get("hint", ""),
+        }
+        for entry in entries[:_MAX_CONTEXT_ITEMS]
+        if isinstance(entry, dict)
+        and isinstance(entry.get("path"), str)
+        and isinstance(entry.get("status", ""), str)
+        and isinstance(entry.get("hint", ""), str)
+    ]
+    encoded = json.dumps(payload, ensure_ascii=True)
+    if len(encoded) <= _MAX_UNTRUSTED_JSON_CHARS:
+        return encoded
+    return json.dumps(
+        {
+            "item_count": len(entries),
+            "details_omitted": "untrusted file data exceeded the display budget",
+        },
+        ensure_ascii=True,
+    )
 
 
 def get_test_file_path(

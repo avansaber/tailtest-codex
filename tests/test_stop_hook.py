@@ -6,6 +6,7 @@ graceful handling of missing session.json, duplicate deduplication.
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -63,6 +64,24 @@ def _event(tmp_path, stop_hook_active: bool = False) -> dict:
         "last_assistant_message": "I created billing.py",
         "transcript_path": str(tmp_path / "transcript.jsonl"),
     }
+
+
+def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"git unavailable or failed: {result.stderr}")
+    return result
+
+
+def _init_git_repo(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "tailtest@example.invalid")
+    _git(tmp_path, "config", "user.name", "Tailtest")
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +170,47 @@ class TestPythonFileQueued:
             saved = json.load(fh)
         entry = next(p for p in saved["pending_files"] if "billing.py" in p["path"])
         assert entry["language"] == "python"
+
+
+class TestGitCleanMtimeChurn:
+    def test_clean_tracked_file_with_refreshed_mtime_does_not_block(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time() - 5
+        os.utime(src, None)
+        session = _base_session(tmp_path, turn_start_mtime=baseline)
+        _write_session(tmp_path, session)
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out == {}
+        assert saved["pending_files"] == []
+
+    def test_dirty_tracked_file_is_queued_as_legacy_file(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time()
+        time.sleep(0.05)
+        src.write_text("def app():\n    return 2\n")
+        session = _base_session(tmp_path, turn_start_mtime=baseline)
+        _write_session(tmp_path, session)
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out["decision"] == "block"
+        assert saved["pending_files"] == [
+            {"path": "app.py", "language": "python", "status": "legacy-file"}
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -98,6 +98,24 @@ def _make_py(tmp_path, rel: str, content: str = "def f():\n    pass\n") -> str:
     return str(abs_path)
 
 
+def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"git unavailable or failed: {result.stderr}")
+    return result
+
+
+def _init_git_repo(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "tailtest@example.invalid")
+    _git(tmp_path, "config", "user.name", "Tailtest")
+
+
 # -- tool-name filter --------------------------------------------------------
 
 
@@ -220,6 +238,81 @@ def test_shell_tool_uses_mtime_sweep(tmp_path):
     )
     assert code == 0
     assert "src/via_shell.py" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_canonical_bash_tool_uses_mtime_sweep(tmp_path):
+    """Codex reports shell and unified-exec hooks under the Bash tool name."""
+    session = _base_session(tmp_path)
+    session["turn_start_mtime"] = time.time() - 5
+    _write_session(tmp_path, session)
+    time.sleep(0.05)
+    _make_py(tmp_path, "src/via_bash.py")
+    code, out = _run_hook(
+        tmp_path,
+        _event(
+            tmp_path,
+            tool_name="Bash",
+            tool_input={"command": "python -c \"open('src/via_bash.py', 'w')\""},
+        ),
+    )
+    assert code == 0
+    assert "src/via_bash.py" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_shell_mtime_sweep_skips_clean_tracked_file_churn(tmp_path):
+    _init_git_repo(tmp_path)
+    src = tmp_path / "src" / "clean.py"
+    src.parent.mkdir()
+    src.write_text("def clean():\n    return 1\n")
+    _git(tmp_path, "add", "src/clean.py")
+    _git(tmp_path, "commit", "-m", "init")
+    baseline = time.time() - 5
+    os.utime(src, None)
+    session = _base_session(
+        tmp_path,
+        turn_start_mtime=baseline,
+        post_tool_last_fire_mtime=baseline,
+    )
+    _write_session(tmp_path, session)
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(tmp_path, tool_name="Bash", tool_input={"command": "git pull"}),
+    )
+
+    assert code == 0
+    assert out == {}
+    assert _load_session(tmp_path)["pending_files"] == []
+
+
+def test_shell_mtime_sweep_queues_dirty_tracked_file_as_legacy(tmp_path):
+    _init_git_repo(tmp_path)
+    src = tmp_path / "src" / "dirty.py"
+    src.parent.mkdir()
+    src.write_text("def dirty():\n    return 1\n")
+    _git(tmp_path, "add", "src/dirty.py")
+    _git(tmp_path, "commit", "-m", "init")
+    baseline = time.time()
+    time.sleep(0.05)
+    src.write_text("def dirty():\n    return 2\n")
+    session = _base_session(
+        tmp_path,
+        turn_start_mtime=baseline,
+        post_tool_last_fire_mtime=baseline,
+    )
+    _write_session(tmp_path, session)
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(tmp_path, tool_name="Bash", tool_input={"command": "python edit.py"}),
+    )
+
+    assert code == 0
+    assert "src/dirty.py" in out["hookSpecificOutput"]["additionalContext"]
+    assert '"status": "legacy-file"' in out["hookSpecificOutput"]["additionalContext"]
+    assert _load_session(tmp_path)["pending_files"] == [
+        {"path": "src/dirty.py", "language": "python", "status": "legacy-file"}
+    ]
 
 
 # -- session state handling -------------------------------------------------
@@ -366,6 +459,7 @@ def test_multi_file_patch_queues_all(tmp_path):
     note = out["hookSpecificOutput"]["additionalContext"]
     assert "src/a.py" in note
     assert "src/b.py" in note
+    assert '"status": "new-file"' in note
     assert "queued 2 file(s)" in note
     session = _load_session(tmp_path)
     paths = sorted(p["path"] for p in session["pending_files"])
