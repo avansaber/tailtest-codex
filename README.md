@@ -1,7 +1,7 @@
 # tailtest-codex -- AI software testing for OpenAI Codex CLI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-400_passing-emerald)](https://github.com/avansaber/tailtest-codex)
+[![Tests](https://img.shields.io/badge/tests-407_passing-emerald)](https://github.com/avansaber/tailtest-codex)
 [![Version](https://img.shields.io/badge/version-4.9.1-blue)](https://github.com/avansaber/tailtest-codex/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-macOS_%7C_Linux-lightgrey)](https://tailtest.com/platform/agent-edits/)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-0.129.0%2B-purple)](https://developers.openai.com/codex)
@@ -66,6 +66,10 @@ The `codex_hooks` key (used in older docs) is still accepted as a deprecated ali
 1. `SessionStart` hook scans for runners and injects `AGENTS.md`
 2. `PostToolUse` hook fires after every `apply_patch` or shell-style tool call: parses the patch (or sweeps mtimes when the payload doesn't surface paths), queues qualified source files, and surfaces them to the agent as mid-turn context
 3. `Stop` hook sweeps any leftovers at end of turn and prompts the agent to write tests before continuing
+
+Need a strict no-more-tools boundary after a write? Include `/tailtest defer`
+in that user message. Tailtest still validates and queues the change, but Stop
+does not force another agent cycle; the queue resumes on the next user turn.
 
 ---
 
