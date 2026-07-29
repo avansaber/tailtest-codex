@@ -77,8 +77,9 @@ class TestPreExistingFileSkipped:
     def test_pre_existing_file_not_detected(self, tmp_path):
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
-        # Set baseline AFTER the file was written
-        baseline = time.time()
+        # Use the file's exact mtime so the strict ">" comparison is exercised
+        # without depending on platform timer granularity.
+        baseline = os.path.getmtime(str(src))
         results = _sweep(tmp_path, baseline)
         paths = [r["path"] for r in results]
         assert "billing.py" not in paths

@@ -18,6 +18,7 @@ def get_test_file_path(
     project_root: str,
 ) -> Optional[str]:
     """Return the absolute path of the expected test file for a source file."""
+    rel_path = _norm(rel_path)
     runner_info = runners.get(language)
     if not runner_info and runners and language not in RUNNER_REQUIRED_LANGUAGES:
         runner_info = next(iter(runners.values()))
@@ -33,10 +34,10 @@ def get_test_file_path(
         source_dir = os.path.dirname(rel_path)
         test_filename = f"{basename}_test.go"
         if source_dir:
-            return os.path.join(project_root, source_dir, test_filename)
-        return os.path.join(project_root, test_filename)
+            return _norm(os.path.join(project_root, source_dir, test_filename))
+        return _norm(os.path.join(project_root, test_filename))
 
-    test_location = runner_info.get("test_location", "tests/").rstrip("/")
+    test_location = runner_info.get("test_location", "tests/").rstrip("/\\")
 
     if language == "python":
         test_filename = f"test_{basename}.py"
@@ -59,17 +60,17 @@ def get_test_file_path(
         for subdir in ("tests/Unit", "tests/Feature", "tests"):
             candidate = os.path.join(project_root, subdir, test_filename)
             if os.path.exists(candidate):
-                return candidate
+                return _norm(candidate)
         is_feature = "/Http/" in rel_path or "/Controllers/" in rel_path
         if is_feature:
-            feature_dir = runner_info.get("feature_test_dir", "tests/Feature").rstrip("/")
-            return os.path.join(project_root, feature_dir, test_filename)
-        unit_dir = runner_info.get("unit_test_dir", "tests/Unit").rstrip("/")
-        return os.path.join(project_root, unit_dir, test_filename)
+            feature_dir = runner_info.get("feature_test_dir", "tests/Feature").rstrip("/\\")
+            return _norm(os.path.join(project_root, feature_dir, test_filename))
+        unit_dir = runner_info.get("unit_test_dir", "tests/Unit").rstrip("/\\")
+        return _norm(os.path.join(project_root, unit_dir, test_filename))
     else:
         return None
 
-    return os.path.join(project_root, test_location, test_filename)
+    return _norm(os.path.join(project_root, test_location, test_filename))
 
 
 def detect_framework_context(
