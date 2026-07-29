@@ -11,6 +11,7 @@ startup / resume:
 
 compact:
   - Re-injects AGENTS.md so the model has instructions after compaction
+  - Re-bases turn watermarks so later sweeps only see post-compaction edits
   - Re-emits session state summary from .tailtest/session.json
 
 Target: < 2 seconds for startup, < 1 second for compact.
@@ -34,6 +35,7 @@ from hooks.lib.context import (
 )
 from hooks.lib.ramp_up import _write_orphaned_report, is_first_session, ramp_up_scan
 from hooks.lib.runners import create_session, read_depth, scan_runners
+from hooks.lib.session import rebase_turn_timestamps, save_session
 
 
 def main() -> None:
@@ -76,6 +78,13 @@ def main() -> None:
                 with open(session_path) as fh:
                     session = json.load(fh)
             except (json.JSONDecodeError, OSError):
+                pass
+
+        if session:
+            rebase_turn_timestamps(session)
+            try:
+                save_session(project_root, session)
+            except OSError:
                 pass
 
         runners = session.get("runners", {})
