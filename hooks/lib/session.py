@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from typing import Optional
 
 from hooks.lib.filter import _norm
@@ -41,6 +42,14 @@ def save_session(project_root: str, session: dict) -> None:
     with open(session_path, "w") as fh:
         json.dump(session, fh, indent=2)
         fh.write("\n")
+
+
+def rebase_turn_timestamps(session: dict, now: Optional[float] = None) -> None:
+    """Reset per-turn mtime watermarks for a fresh post-compaction baseline."""
+    if now is None:
+        now = time.time()
+    session["turn_start_mtime"] = now
+    session["post_tool_last_fire_mtime"] = now
 
 
 def is_git_tracked(file_path: str, project_root: str) -> Optional[bool]:

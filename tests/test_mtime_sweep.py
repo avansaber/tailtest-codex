@@ -6,11 +6,13 @@ noisy directories skipped, test files skipped, generated files skipped,
 """
 
 import os
+import subprocess
 import time
 
 import pytest
 
 from hooks.lib.filter import load_ignore_patterns
+from hooks.lib.scanner import sweep_mtime_changed
 from hooks.stop import sweep_changed_files
 
 
@@ -26,6 +28,24 @@ def _touch(path: str, content: str = "x = 1\n") -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as fh:
         fh.write(content)
+
+
+def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"git unavailable or failed: {result.stderr}")
+    return result
+
+
+def _init_git_repo(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "tailtest@example.invalid")
+    _git(tmp_path, "config", "user.name", "Tailtest")
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +97,69 @@ class TestPreExistingFileSkipped:
     def test_pre_existing_file_not_detected(self, tmp_path):
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
-        # Set baseline AFTER the file was written
-        baseline = time.time()
+        # Use the file's exact mtime so the strict ">" comparison is exercised
+        # without depending on platform timer granularity.
+        baseline = os.path.getmtime(str(src))
         results = _sweep(tmp_path, baseline)
         paths = [r["path"] for r in results]
         assert "billing.py" not in paths
+
+
+class TestGitCleanMtimeChurnSkipped:
+    def test_clean_tracked_file_with_new_mtime_is_skipped_when_git_required(
+        self,
+        tmp_path,
+    ):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time() - 5
+        os.utime(src, None)
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert results == []
+
+    def test_dirty_tracked_file_is_detected_when_git_required(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time()
+        time.sleep(0.05)
+        src.write_text("def app():\n    return 2\n")
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert results == [{"path": "app.py", "language": "python"}]
+
+    def test_untracked_source_file_is_detected_when_git_required(self, tmp_path):
+        _init_git_repo(tmp_path)
+        baseline = time.time() - 5
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert results == [{"path": "app.py", "language": "python"}]
 
 
 # ---------------------------------------------------------------------------
