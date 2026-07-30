@@ -12,7 +12,7 @@ Use the [issue tracker](https://github.com/avansaber/tailtest-codex/issues). Whe
 
 - tailtest-codex version (from the `README.md` badge or `CHANGELOG.md`)
 - Codex CLI version (must be 0.129.0 or newer)
-- Operating system and version (macOS or Linux)
+- Operating system and version (Windows, macOS, or Linux)
 - Repro steps, expected behavior, and actual behavior
 - Relevant excerpts from `.tailtest/reports/latest.json` if applicable
 
@@ -20,7 +20,7 @@ Use the [issue tracker](https://github.com/avansaber/tailtest-codex/issues). Whe
 
 1. Fork the repo and create a topic branch off `main`.
 2. Make your change. Keep commits focused and the diff small where possible.
-3. Run the test suite (see below) and confirm it is green.
+3. Run the validation commands below and report the platform-specific result; do not imply unrun platforms passed.
 4. Open a pull request against `main` with a clear description of what changed and why.
 
 Contributor email is not required, and the project does not collect Co-Authored-By signing data.
@@ -28,7 +28,9 @@ Contributor email is not required, and the project does not collect Co-Authored-
 ## Running tests
 
 ```bash
-pytest -q
+python -m pytest -q
+python -m ruff check .
+python -m ruff format --check .
 ```
 
 To run a single test file or test:

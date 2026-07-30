@@ -8,8 +8,6 @@ find_package_root.  No Codex session required.
 import os
 import tempfile
 
-import pytest
-
 from hooks.lib.filter import (
     detect_language,
     is_filtered,
@@ -329,7 +327,13 @@ class TestBuildContextNote:
             "new-file",
             "python",
             1,
-            {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}},
+            {
+                "python": {
+                    "command": "pytest",
+                    "args": ["-q"],
+                    "test_location": "tests/",
+                }
+            },
         )
         assert "billing.py" in note
         assert "new-file" in note
@@ -349,7 +353,13 @@ class TestBuildContextNote:
         assert "session.json" in note
 
     def test_fallback_runner_from_other_language(self):
-        runners = {"typescript": {"command": "vitest", "args": ["run"], "test_location": "__tests__/"}}
+        runners = {
+            "typescript": {
+                "command": "vitest",
+                "args": ["run"],
+                "test_location": "__tests__/",
+            }
+        }
         note = build_context_note("app.py", "new-file", "python", 1, runners)
         assert "vitest" in note
 
@@ -360,24 +370,46 @@ class TestBuildContextNote:
 
 
 class TestGetTestFilePath:
-    PYTHON_RUNNERS = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}}
-    TS_RUNNERS = {"typescript": {"command": "vitest", "args": ["run"], "test_location": "__tests__/"}}
-    JS_RUNNERS = {"javascript": {"command": "vitest", "args": ["run"], "test_location": "__tests__/"}}
+    PYTHON_RUNNERS = {
+        "python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}
+    }
+    TS_RUNNERS = {
+        "typescript": {
+            "command": "vitest",
+            "args": ["run"],
+            "test_location": "__tests__/",
+        }
+    }
+    JS_RUNNERS = {
+        "javascript": {
+            "command": "vitest",
+            "args": ["run"],
+            "test_location": "__tests__/",
+        }
+    }
 
     def test_python_source_file(self):
-        path = get_test_file_path("services/billing.py", "python", self.PYTHON_RUNNERS, "/project")
+        path = get_test_file_path(
+            "services/billing.py", "python", self.PYTHON_RUNNERS, "/project"
+        )
         assert path == "/project/tests/test_billing.py"
 
     def test_python_nested_source_file(self):
-        path = get_test_file_path("app/services/billing.py", "python", self.PYTHON_RUNNERS, "/project")
+        path = get_test_file_path(
+            "app/services/billing.py", "python", self.PYTHON_RUNNERS, "/project"
+        )
         assert path == "/project/tests/test_billing.py"
 
     def test_typescript_source_file(self):
-        path = get_test_file_path("src/components/Button.tsx", "typescript", self.TS_RUNNERS, "/project")
+        path = get_test_file_path(
+            "src/components/Button.tsx", "typescript", self.TS_RUNNERS, "/project"
+        )
         assert path == "/project/__tests__/Button.test.ts"
 
     def test_javascript_source_file(self):
-        path = get_test_file_path("src/utils.js", "javascript", self.JS_RUNNERS, "/project")
+        path = get_test_file_path(
+            "src/utils.js", "javascript", self.JS_RUNNERS, "/project"
+        )
         assert path == "/project/__tests__/utils.test.js"
 
     def test_no_runner_returns_none(self):
@@ -398,12 +430,26 @@ class TestGetTestFilePath:
         assert path == "/project/__tests__/test_utils.py"
 
     def test_go_colocated_in_subdir(self):
-        runners = {"go": {"command": "go test", "args": ["./..."], "test_location": ".", "style": "colocated"}}
+        runners = {
+            "go": {
+                "command": "go test",
+                "args": ["./..."],
+                "test_location": ".",
+                "style": "colocated",
+            }
+        }
         path = get_test_file_path("internal/handler.go", "go", runners, "/project")
         assert path == "/project/internal/handler_test.go"
 
     def test_go_colocated_root_level(self):
-        runners = {"go": {"command": "go test", "args": ["./..."], "test_location": ".", "style": "colocated"}}
+        runners = {
+            "go": {
+                "command": "go test",
+                "args": ["./..."],
+                "test_location": ".",
+                "style": "colocated",
+            }
+        }
         path = get_test_file_path("main.go", "go", runners, "/project")
         assert path == "/project/main_test.go"
 
@@ -412,7 +458,14 @@ class TestGetTestFilePath:
         assert path is None
 
     def test_rust_returns_none(self):
-        runners = {"rust": {"command": "cargo test", "args": [], "test_location": "inline", "style": "inline"}}
+        runners = {
+            "rust": {
+                "command": "cargo test",
+                "args": [],
+                "test_location": "inline",
+                "style": "inline",
+            }
+        }
         path = get_test_file_path("src/lib.rs", "rust", runners, "/project")
         assert path is None
 
@@ -421,40 +474,88 @@ class TestGetTestFilePath:
         assert path is None
 
     def test_ruby_rspec(self):
-        runners = {"ruby": {"command": "bundle exec rspec", "args": [], "test_location": "spec/"}}
+        runners = {
+            "ruby": {
+                "command": "bundle exec rspec",
+                "args": [],
+                "test_location": "spec/",
+            }
+        }
         path = get_test_file_path("app/models/user.rb", "ruby", runners, "/project")
         assert path == "/project/spec/user_spec.rb"
 
     def test_ruby_minitest(self):
-        runners = {"ruby": {"command": "bundle exec rake test", "args": [], "test_location": "test/"}}
+        runners = {
+            "ruby": {
+                "command": "bundle exec rake test",
+                "args": [],
+                "test_location": "test/",
+            }
+        }
         path = get_test_file_path("app/models/user.rb", "ruby", runners, "/project")
         assert path == "/project/test/user_test.rb"
 
     def test_ruby_requires_configured_runner(self):
-        path = get_test_file_path("app/models/user.rb", "ruby", self.PYTHON_RUNNERS, "/project")
+        path = get_test_file_path(
+            "app/models/user.rb", "ruby", self.PYTHON_RUNNERS, "/project"
+        )
         assert path is None
 
     def test_java_maven(self):
-        runners = {"java": {"command": "./mvnw test", "args": [], "test_location": "src/test/java/"}}
-        path = get_test_file_path("src/main/java/BillingService.java", "java", runners, "/project")
+        runners = {
+            "java": {
+                "command": "./mvnw test",
+                "args": [],
+                "test_location": "src/test/java/",
+            }
+        }
+        path = get_test_file_path(
+            "src/main/java/BillingService.java", "java", runners, "/project"
+        )
         assert path == "/project/src/test/java/BillingServiceTest.java"
 
     def test_java_requires_configured_runner(self):
-        path = get_test_file_path("src/main/java/BillingService.java", "java", self.PYTHON_RUNNERS, "/project")
+        path = get_test_file_path(
+            "src/main/java/BillingService.java", "java", self.PYTHON_RUNNERS, "/project"
+        )
         assert path is None
 
     def test_php_controller_routes_to_feature(self):
-        runners = {"php": {"command": "./vendor/bin/phpunit", "args": [], "test_location": "tests/", "unit_test_dir": "tests/Unit/", "feature_test_dir": "tests/Feature/"}}
-        path = get_test_file_path("app/Http/Controllers/UserController.php", "php", runners, "/project")
+        runners = {
+            "php": {
+                "command": "./vendor/bin/phpunit",
+                "args": [],
+                "test_location": "tests/",
+                "unit_test_dir": "tests/Unit/",
+                "feature_test_dir": "tests/Feature/",
+            }
+        }
+        path = get_test_file_path(
+            "app/Http/Controllers/UserController.php", "php", runners, "/project"
+        )
         assert path == "/project/tests/Feature/UserControllerTest.php"
 
     def test_php_service_routes_to_unit(self):
-        runners = {"php": {"command": "./vendor/bin/phpunit", "args": [], "test_location": "tests/", "unit_test_dir": "tests/Unit/"}}
-        path = get_test_file_path("app/Services/OrderService.php", "php", runners, "/project")
+        runners = {
+            "php": {
+                "command": "./vendor/bin/phpunit",
+                "args": [],
+                "test_location": "tests/",
+                "unit_test_dir": "tests/Unit/",
+            }
+        }
+        path = get_test_file_path(
+            "app/Services/OrderService.php", "php", runners, "/project"
+        )
         assert path == "/project/tests/Unit/OrderServiceTest.php"
 
     def test_php_requires_configured_runner(self):
-        path = get_test_file_path("app/Http/Controllers/UserController.php", "php", self.PYTHON_RUNNERS, "/project")
+        path = get_test_file_path(
+            "app/Http/Controllers/UserController.php",
+            "php",
+            self.PYTHON_RUNNERS,
+            "/project",
+        )
         assert path is None
 
 
@@ -465,15 +566,21 @@ class TestGetTestFilePath:
 
 class TestBuildLegacyContextNote:
     def test_includes_file_path(self):
-        note = build_legacy_context_note("services/billing.py", "pytest", "tests/test_billing.py")
+        note = build_legacy_context_note(
+            "services/billing.py", "pytest", "tests/test_billing.py"
+        )
         assert "services/billing.py" in note
 
     def test_includes_do_not_generate_instruction(self):
-        note = build_legacy_context_note("services/billing.py", "pytest", "tests/test_billing.py")
+        note = build_legacy_context_note(
+            "services/billing.py", "pytest", "tests/test_billing.py"
+        )
         assert "do not generate" in note.lower()
 
     def test_includes_run_command(self):
-        note = build_legacy_context_note("services/billing.py", "pytest", "tests/test_billing.py")
+        note = build_legacy_context_note(
+            "services/billing.py", "pytest", "tests/test_billing.py"
+        )
         assert "pytest" in note
         assert "tests/test_billing.py" in note
 
@@ -482,7 +589,9 @@ class TestBuildLegacyContextNote:
         assert "existing" in note or "session" in note
 
     def test_vitest_runner(self):
-        note = build_legacy_context_note("src/Button.tsx", "npx vitest run", "__tests__/Button.test.ts")
+        note = build_legacy_context_note(
+            "src/Button.tsx", "npx vitest run", "__tests__/Button.test.ts"
+        )
         assert "vitest" in note
         assert "Button.test.ts" in note
 
@@ -495,9 +604,15 @@ class TestBuildLegacyContextNote:
 class TestDetectFrameworkContext:
     GO_RUNNERS = {"go": {"command": "go test", "args": ["./..."], "style": "colocated"}}
     RUST_RUNNERS = {"rust": {"command": "cargo test", "args": [], "style": "inline"}}
-    LARAVEL_RUNNERS = {"php": {"command": "./vendor/bin/phpunit", "args": [], "framework": "laravel"}}
-    NEXTJS_RUNNERS = {"typescript": {"command": "vitest", "args": ["run"], "framework": "nextjs"}}
-    NUXT_RUNNERS = {"typescript": {"command": "vitest", "args": ["run"], "framework": "nuxt"}}
+    LARAVEL_RUNNERS = {
+        "php": {"command": "./vendor/bin/phpunit", "args": [], "framework": "laravel"}
+    }
+    NEXTJS_RUNNERS = {
+        "typescript": {"command": "vitest", "args": ["run"], "framework": "nextjs"}
+    }
+    NUXT_RUNNERS = {
+        "typescript": {"command": "vitest", "args": ["run"], "framework": "nuxt"}
+    }
 
     def test_go_colocated_style(self):
         ctx = detect_framework_context("internal/handler.go", "go", self.GO_RUNNERS)
@@ -508,23 +623,33 @@ class TestDetectFrameworkContext:
         assert ctx == "rust/inline"
 
     def test_laravel_feature_controller(self):
-        ctx = detect_framework_context("app/Http/Controllers/UserController.php", "php", self.LARAVEL_RUNNERS)
+        ctx = detect_framework_context(
+            "app/Http/Controllers/UserController.php", "php", self.LARAVEL_RUNNERS
+        )
         assert ctx == "laravel/feature"
 
     def test_laravel_unit_model(self):
-        ctx = detect_framework_context("app/Models/User.php", "php", self.LARAVEL_RUNNERS)
+        ctx = detect_framework_context(
+            "app/Models/User.php", "php", self.LARAVEL_RUNNERS
+        )
         assert ctx == "laravel/unit"
 
     def test_nextjs_framework(self):
-        ctx = detect_framework_context("src/components/Button.tsx", "typescript", self.NEXTJS_RUNNERS)
+        ctx = detect_framework_context(
+            "src/components/Button.tsx", "typescript", self.NEXTJS_RUNNERS
+        )
         assert ctx == "nextjs"
 
     def test_nuxt_framework(self):
-        ctx = detect_framework_context("components/MyButton.vue", "typescript", self.NUXT_RUNNERS)
+        ctx = detect_framework_context(
+            "components/MyButton.vue", "typescript", self.NUXT_RUNNERS
+        )
         assert ctx == "nuxt"
 
     def test_no_framework_returns_empty(self):
-        runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}}
+        runners = {
+            "python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}
+        }
         ctx = detect_framework_context("services/billing.py", "python", runners)
         assert ctx == ""
 
@@ -533,32 +658,50 @@ class TestDetectFrameworkContext:
         assert ctx == ""
 
     def test_vue_file_with_typescript_runner_gets_nuxt_context(self):
-        nuxt_ts_runners = {"typescript": {"command": "vitest", "args": ["run"], "framework": "nuxt"}}
-        ctx = detect_framework_context("components/InvoiceCard.vue", "javascript", nuxt_ts_runners)
+        nuxt_ts_runners = {
+            "typescript": {"command": "vitest", "args": ["run"], "framework": "nuxt"}
+        }
+        ctx = detect_framework_context(
+            "components/InvoiceCard.vue", "javascript", nuxt_ts_runners
+        )
         assert ctx == "nuxt"
 
     def test_context_note_includes_framework(self):
-        note = build_context_note("internal/handler.go", "new-file", "go", 1, self.GO_RUNNERS)
+        note = build_context_note(
+            "internal/handler.go", "new-file", "go", 1, self.GO_RUNNERS
+        )
         assert "go/colocated" in note
 
     def test_context_note_includes_test_path_single_file(self):
-        runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}}
-        note = build_context_note("services/billing.py", "new-file", "python", 1, runners, "/project")
+        runners = {
+            "python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}
+        }
+        note = build_context_note(
+            "services/billing.py", "new-file", "python", 1, runners, "/project"
+        )
         assert "tests/test_billing.py" in note
 
     def test_context_note_go_test_path(self):
-        note = build_context_note("internal/handler.go", "new-file", "go", 1, self.GO_RUNNERS, "/project")
+        note = build_context_note(
+            "internal/handler.go", "new-file", "go", 1, self.GO_RUNNERS, "/project"
+        )
         assert "internal/handler_test.go" in note
 
     def test_context_note_rust_inline_hint(self):
-        note = build_context_note("src/lib.rs", "new-file", "rust", 1, self.RUST_RUNNERS, "/project")
+        note = build_context_note(
+            "src/lib.rs", "new-file", "rust", 1, self.RUST_RUNNERS, "/project"
+        )
         assert "add #[cfg(test)]" in note
         assert "src/lib.rs" in note
 
     def test_context_note_laravel_feature_path(self):
         note = build_context_note(
             "app/Http/Controllers/UserController.php",
-            "new-file", "php", 1, self.LARAVEL_RUNNERS, "/project"
+            "new-file",
+            "php",
+            1,
+            self.LARAVEL_RUNNERS,
+            "/project",
         )
         assert "tests/Feature/UserControllerTest.php" in note
         assert ".env.testing" in note
@@ -568,7 +711,11 @@ class TestDetectFrameworkContext:
             open(os.path.join(tmpdir, ".env.testing"), "w").close()
             note = build_context_note(
                 "app/Http/Controllers/UserController.php",
-                "new-file", "php", 1, self.LARAVEL_RUNNERS, tmpdir
+                "new-file",
+                "php",
+                1,
+                self.LARAVEL_RUNNERS,
+                tmpdir,
             )
         assert "tests/Feature/UserControllerTest.php" in note
         assert ".env.testing" not in note
@@ -576,14 +723,20 @@ class TestDetectFrameworkContext:
     def test_context_note_php_multi_file_still_includes_path(self):
         note = build_context_note(
             "app/Http/Controllers/InvoiceController.php",
-            "new-file", "php", 3, self.LARAVEL_RUNNERS, "/project"
+            "new-file",
+            "php",
+            3,
+            self.LARAVEL_RUNNERS,
+            "/project",
         )
         assert "tests/Feature/InvoiceControllerTest.php" in note
         assert "3 files pending" in note
 
     def test_context_note_multi_file_no_path(self):
         runners = {"python": {"command": "pytest", "test_location": "tests/"}}
-        note = build_context_note("services/billing.py", "new-file", "python", 3, runners, "/project")
+        note = build_context_note(
+            "services/billing.py", "new-file", "python", 3, runners, "/project"
+        )
         assert "test_billing.py" not in note
         assert "3 files pending" in note
 
@@ -598,8 +751,12 @@ class TestContextNoteExistingTest:
 
     def test_existing_test_path_emits_update(self):
         note = build_context_note(
-            "services/billing.py", "new-file", "python", 1,
-            self.PYTHON_RUNNERS, "/project",
+            "services/billing.py",
+            "new-file",
+            "python",
+            1,
+            self.PYTHON_RUNNERS,
+            "/project",
             existing_test_path="tests/test_billing.py",
         )
         assert "update existing test at tests/test_billing.py" in note
@@ -607,24 +764,36 @@ class TestContextNoteExistingTest:
 
     def test_no_existing_test_path_emits_write(self):
         note = build_context_note(
-            "services/billing.py", "new-file", "python", 1,
-            self.PYTHON_RUNNERS, "/project",
+            "services/billing.py",
+            "new-file",
+            "python",
+            1,
+            self.PYTHON_RUNNERS,
+            "/project",
         )
         assert "write test to" in note
         assert "update existing test" not in note
 
     def test_existing_test_path_runner_name_still_included(self):
         note = build_context_note(
-            "services/billing.py", "new-file", "python", 1,
-            self.PYTHON_RUNNERS, "/project",
+            "services/billing.py",
+            "new-file",
+            "python",
+            1,
+            self.PYTHON_RUNNERS,
+            "/project",
             existing_test_path="tests/test_billing.py",
         )
         assert "pytest" in note
 
     def test_existing_test_path_pending_count_still_included(self):
         note = build_context_note(
-            "services/billing.py", "new-file", "python", 3,
-            self.PYTHON_RUNNERS, "/project",
+            "services/billing.py",
+            "new-file",
+            "python",
+            3,
+            self.PYTHON_RUNNERS,
+            "/project",
             existing_test_path="tests/test_billing.py",
         )
         assert "3 files pending" in note
@@ -638,7 +807,9 @@ class TestContextNoteExistingTest:
 class TestFindPackageRoot:
     def test_file_in_package_returns_package(self):
         packages = {"packages/api": {"python": {}}}
-        assert find_package_root("packages/api/src/billing.py", packages) == "packages/api"
+        assert (
+            find_package_root("packages/api/src/billing.py", packages) == "packages/api"
+        )
 
     def test_file_not_in_any_package_returns_none(self):
         packages = {"packages/api": {"python": {}}}
@@ -646,19 +817,28 @@ class TestFindPackageRoot:
 
     def test_deepest_package_wins_over_shallower(self):
         packages = {"packages": {"python": {}}, "packages/api": {"python": {}}}
-        assert find_package_root("packages/api/src/billing.py", packages) == "packages/api"
+        assert (
+            find_package_root("packages/api/src/billing.py", packages) == "packages/api"
+        )
 
     def test_empty_packages_returns_none(self):
         assert find_package_root("services/billing.py", {}) is None
 
     def test_sibling_package_does_not_match(self):
         packages = {"packages/web": {"typescript": {}}, "packages/api": {"python": {}}}
-        assert find_package_root("packages/web/src/Button.tsx", packages) == "packages/web"
-        assert find_package_root("packages/api/src/billing.py", packages) == "packages/api"
+        assert (
+            find_package_root("packages/web/src/Button.tsx", packages) == "packages/web"
+        )
+        assert (
+            find_package_root("packages/api/src/billing.py", packages) == "packages/api"
+        )
 
     def test_backslash_path_normalised(self):
         packages = {"packages/api": {"python": {}}}
-        assert find_package_root("packages\\api\\src\\billing.py", packages) == "packages/api"
+        assert (
+            find_package_root("packages\\api\\src\\billing.py", packages)
+            == "packages/api"
+        )
 
     def test_file_at_package_root(self):
         packages = {"packages/api": {"python": {}}}

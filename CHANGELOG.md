@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+Codex hook contract and packaging repair.
+
+- Plugin hook commands now resolve bundled scripts through `PLUGIN_ROOT`, with `commandWindows` overrides.
+- `SessionStart` covers startup, resume, and compact; resume preserves pending state and plugin instructions are returned as context without writing a project `AGENTS.md`.
+- `PostToolUse` recognizes canonical `Bash` and `tool_input.command`, emits `hookEventName: "PostToolUse"`, and rejects paths outside the active project.
+- `Stop` blocks whenever pending work remains, even when the end-of-turn sweep finds no newly changed files.
+- Project-local session state is now type-checked and bounded before automatic hooks consume it; restored pending paths must resolve beneath the real project root.
+- SessionStart, PostToolUse, and Stop now place repository-derived file values in explicitly labeled, bounded JSON data instead of mixing them directly into plugin instructions.
+- SessionStart now injects compact trusted runtime instructions and caps the complete UTF-8 context payload at 8 KiB; legacy `AGENTS.md` fallback content is bounded explicitly.
+- Stop now honors `/tailtest defer` and explicit no-further-tools user directives after persisting the validated queue, while fenced, quoted, and indented examples remain inert data and default turns continue to block on pending work.
+- Hook launchers leave the untrusted project directory before resolving Python while preserving the original project root for hook state, and automatic Git probes resolve an absolute executable outside the project tree.
+- The direct-clone initializer materializes absolute project-hook commands instead of leaking plugin-only environment variables into project scope.
+- Added behavior-level regression coverage for manifest matching, Windows commands, installer output, canonical event payloads, resume state, output schema, queue persistence, and path containment.
+- Validation passes on Windows (458 tests) and WSL/Linux (452 passed, 6 platform skips); Ruff lint and format checks are clean on both.
+
 ## [4.9.1] -- 2026-05-26
 
 Plugin icon for the Codex marketplace display.

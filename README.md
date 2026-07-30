@@ -1,9 +1,9 @@
 # tailtest-codex -- AI software testing for OpenAI Codex CLI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-400_passing-emerald)](https://github.com/avansaber/tailtest-codex)
+[![Tests](https://img.shields.io/badge/tests-458_passing_(Windows)-emerald)](https://github.com/avansaber/tailtest-codex)
 [![Version](https://img.shields.io/badge/version-4.9.1-blue)](https://github.com/avansaber/tailtest-codex/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS_%7C_Linux-lightgrey)](https://tailtest.com/platform/agent-edits/)
+[![Platform](https://img.shields.io/badge/platform-Windows_%7C_macOS_%7C_Linux-lightgrey)](https://tailtest.com/platform/agent-edits/)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-0.129.0%2B-purple)](https://developers.openai.com/codex)
 
 **tailtest-codex** is the open-source AI software testing layer for [OpenAI Codex CLI](https://developers.openai.com/codex). It runs inside the build loop: PostToolUse + Stop hooks fire after every `apply_patch` Codex makes, queue the changed files, generate scenarios via the R1-R15 rule layer, run them with your project's existing test runner, and surface failures back to Codex within the same turn. Hook-based. Deterministic. No prompting required.
@@ -18,35 +18,24 @@ Open source (MIT), no telemetry, no SaaS account. Same R1-R15 rule layer + adver
 
 Requires Codex CLI 0.129.0 or newer (hooks are stable and on by default in this range).
 
-```bash
-# One-time setup (any terminal):
-git clone https://github.com/avansaber/tailtest-codex ~/.codex/plugins/tailtest
+### Marketplace install (recommended)
 
-# Per-project setup (run inside each project where you want tailtest active):
+```bash
+codex plugin marketplace add avansaber/tailtest-codex
+codex plugin add tailtest@avansaber-tailtest
+```
+
+Start a new Codex session and review the three Tailtest hook commands when Codex asks you to trust them. The plugin bundle registers `SessionStart`, `PostToolUse`, and `Stop` automatically; no project hook file is required.
+
+### Direct clone (fallback)
+
+```bash
+git clone https://github.com/avansaber/tailtest-codex ~/.codex/plugins/tailtest
 cd <your-project>
 bash ~/.codex/plugins/tailtest/scripts/init.sh
 ```
 
-That's it. Start a `codex` session in the project and tailtest fires on every turn.
-
-The init script creates `.codex/hooks.json` in your project pointing at the tailtest hook scripts. It is idempotent (safe to re-run) and never overwrites an existing `hooks.json` with different content; it writes a `.codex/hooks.json.tailtest` sidecar instead for manual merging.
-
-### Marketplace install (alternative)
-
-The repo also ships as a Codex marketplace, so you can register it with one command instead of `git clone`:
-
-```bash
-codex plugin marketplace add avansaber/tailtest-codex
-```
-
-Then enable the plugin from inside a Codex session (the interactive `/plugins` menu) or by adding this entry to `~/.codex/config.toml`:
-
-```toml
-[plugins."tailtest@avansaber-tailtest"]
-enabled = true
-```
-
-You still need to run `bash ~/.codex/plugins/tailtest/scripts/init.sh` per project for hooks to fire, because Codex's `plugin_hooks` feature (which lets plugins register hooks automatically) is currently in development. Once that ships stable, the init step will go away. Until then, marketplace install just replaces the `git clone` step and is a forward-compat path.
+The initializer writes project-scoped `.codex/hooks.json` commands with absolute script paths. It is idempotent and never overwrites a different hook file; it writes `.codex/hooks.json.tailtest` for manual merging instead.
 
 ### Older Codex CLI versions
 
@@ -63,9 +52,13 @@ The `codex_hooks` key (used in older docs) is still accepted as a deprecated ali
 
 ## How it works
 
-1. `SessionStart` hook scans for runners and injects `AGENTS.md`
-2. `PostToolUse` hook fires after every `apply_patch` or shell-style tool call: parses the patch (or sweeps mtimes when the payload doesn't surface paths), queues qualified source files, and surfaces them to the agent as mid-turn context
-3. `Stop` hook sweeps any leftovers at end of turn and prompts the agent to write tests before continuing
+1. `SessionStart` scans for runners and returns compact trusted runtime instructions as session context without writing into the project
+2. `PostToolUse` matches canonical Codex `Bash`, `apply_patch`, `Edit`, and `Write` calls, parses `tool_input.command` (or sweeps mtimes), and surfaces qualified in-project source files as mid-turn context
+3. `Stop` sweeps any leftovers and blocks while `.tailtest/session.json` still contains pending work
+
+Need a strict no-more-tools boundary after a write? Include `/tailtest defer`
+in that user message. Tailtest still validates and queues the change, but Stop
+does not force another agent cycle; the queue resumes on the next user turn.
 
 ---
 

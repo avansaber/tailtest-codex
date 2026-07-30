@@ -6,11 +6,13 @@ noisy directories skipped, test files skipped, generated files skipped,
 """
 
 import os
+import subprocess
 import time
 
 import pytest
 
 from hooks.lib.filter import load_ignore_patterns
+from hooks.lib.scanner import sweep_mtime_changed
 from hooks.stop import sweep_changed_files
 
 
@@ -26,6 +28,24 @@ def _touch(path: str, content: str = "x = 1\n") -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as fh:
         fh.write(content)
+
+
+def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"git unavailable or failed: {result.stderr}")
+    return result
+
+
+def _init_git_repo(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "tailtest@example.invalid")
+    _git(tmp_path, "config", "user.name", "Tailtest")
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +86,61 @@ class TestModifiedFileDetected:
         results = _sweep(tmp_path, baseline)
         paths = [r["path"] for r in results]
         assert "billing.py" in paths
+
+
+class TestGitCleanMtimeChurnSkipped:
+    def test_clean_tracked_file_with_refreshed_mtime_is_not_queued(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+
+        baseline = time.time() - 5
+        os.utime(src, None)
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert [entry["path"] for entry in results] == []
+
+    def test_dirty_tracked_file_with_new_mtime_is_queued(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+
+        baseline = time.time()
+        time.sleep(0.05)
+        src.write_text("def app():\n    return 2\n")
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert "app.py" in [entry["path"] for entry in results]
+
+    def test_untracked_source_file_with_new_mtime_is_queued(self, tmp_path):
+        _init_git_repo(tmp_path)
+        baseline = time.time() - 5
+        (tmp_path / "new_service.py").write_text("def service():\n    return 1\n")
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert "new_service.py" in [entry["path"] for entry in results]
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +419,9 @@ _LANGUAGE_MAP_CASES = [
 
 class TestAllLanguageMapExtensions:
     @pytest.mark.parametrize("ext,expected_lang,content", _LANGUAGE_MAP_CASES)
-    def test_extension_detected_with_correct_language(self, tmp_path, ext, expected_lang, content):
+    def test_extension_detected_with_correct_language(
+        self, tmp_path, ext, expected_lang, content
+    ):
         baseline = time.time() - 5
         src = tmp_path / f"source{ext}"
         src.write_text(content)
@@ -353,7 +430,9 @@ class TestAllLanguageMapExtensions:
         filename = f"source{ext}"
         assert filename in paths, f"{ext} file not detected"
         entry = next(r for r in results if r["path"] == filename)
-        assert entry["language"] == expected_lang, f"{ext}: expected {expected_lang}, got {entry['language']}"
+        assert entry["language"] == expected_lang, (
+            f"{ext}: expected {expected_lang}, got {entry['language']}"
+        )
 
 
 class TestMultipleLanguages:

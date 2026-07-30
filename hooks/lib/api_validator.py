@@ -53,6 +53,7 @@ def validate_file_importable(file_path: str, project_root: str) -> tuple[bool, s
 
     try:
         import importlib
+
         importlib.import_module(module_name)
         return True, ""
     except ImportError as e:
@@ -72,6 +73,7 @@ def is_api_validation_enabled(project_root: str) -> bool:
         return False
     try:
         import json
+
         with open(config_path) as fh:
             cfg = json.load(fh)
         return bool(cfg.get("api_validation", False))

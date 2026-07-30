@@ -7,8 +7,6 @@ Import paths updated to use hooks.lib.* modules.
 import json
 import os
 
-import pytest
-
 from hooks.lib.runners import (
     create_session,
     detect_deno_runner,
@@ -27,14 +25,8 @@ from hooks.lib.runners import (
     scan_runners,
 )
 from hooks.lib.ramp_up import (
-    RAMP_UP_SENTINEL,
-    _git_commit_counts,
-    _has_existing_test,
-    _is_ramp_up_filtered,
-    _score_candidate,
     is_first_session,
     ramp_up_scan,
-    read_ramp_up_limit,
 )
 from hooks.lib.style import (
     build_style_context,
@@ -59,20 +51,26 @@ class TestDetectPythonRunner:
         assert detect_python_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_pyproject_with_pytest_section(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths = ['tests']\n")
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.pytest.ini_options]\ntestpaths = ['tests']\n"
+        )
         result = detect_python_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["command"] == "pytest"
         assert result["needs_bootstrap"] is False
 
     def test_pyproject_without_pytest_needs_bootstrap(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text("[build-system]\nrequires = ['setuptools']\n")
+        (tmp_path / "pyproject.toml").write_text(
+            "[build-system]\nrequires = ['setuptools']\n"
+        )
         result = detect_python_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["needs_bootstrap"] is True
 
     def test_pyproject_with_pytest_in_deps(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text('[project.optional-dependencies]\ndev = ["pytest>=7"]\n')
+        (tmp_path / "pyproject.toml").write_text(
+            '[project.optional-dependencies]\ndev = ["pytest>=7"]\n'
+        )
         result = detect_python_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["needs_bootstrap"] is False
@@ -103,7 +101,9 @@ class TestDetectPythonRunner:
         assert result.get("framework") == "django"
 
     def test_fastapi_framework_detected(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["fastapi>=0.100"]\n')
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\ndependencies = ["fastapi>=0.100"]\n'
+        )
         result = detect_python_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result.get("framework") == "fastapi"
@@ -170,7 +170,10 @@ class TestDetectNodeRunner:
         assert detect_node_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_nextjs_framework_detected(self, tmp_path):
-        pkg = {"devDependencies": {"vitest": "^1.0.0"}, "dependencies": {"next": "14.0.0"}}
+        pkg = {
+            "devDependencies": {"vitest": "^1.0.0"},
+            "dependencies": {"next": "14.0.0"},
+        }
         (tmp_path / "package.json").write_text(json.dumps(pkg))
         result = detect_node_runner(str(tmp_path), str(tmp_path))
         assert result is not None
@@ -186,7 +189,9 @@ class TestDetectNodeRunner:
     def test_nuxt_framework_via_config_file(self, tmp_path):
         pkg = {"devDependencies": {"vitest": "^1.0.0"}}
         (tmp_path / "package.json").write_text(json.dumps(pkg))
-        (tmp_path / "nuxt.config.ts").write_text("export default defineNuxtConfig({})\n")
+        (tmp_path / "nuxt.config.ts").write_text(
+            "export default defineNuxtConfig({})\n"
+        )
         result = detect_node_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result.get("framework") == "nuxt"
@@ -243,7 +248,10 @@ class TestDetectNodeRunner:
     # V12.2 NestJS framework detection
 
     def test_nestjs_framework_detected(self, tmp_path):
-        pkg = {"devDependencies": {"vitest": "^1.0.0"}, "dependencies": {"@nestjs/core": "10.0.0"}}
+        pkg = {
+            "devDependencies": {"vitest": "^1.0.0"},
+            "dependencies": {"@nestjs/core": "10.0.0"},
+        }
         (tmp_path / "package.json").write_text(json.dumps(pkg))
         result = detect_node_runner(str(tmp_path), str(tmp_path))
         assert result is not None
@@ -356,7 +364,9 @@ class TestFlaskDetection:
         result = detect_python_runner(str(tmp_path), str(tmp_path))
         assert result.get("framework") == "fastapi"
 
-    def test_flask_and_fastapi_both_declared_no_entry_point_defaults_fastapi(self, tmp_path):
+    def test_flask_and_fastapi_both_declared_no_entry_point_defaults_fastapi(
+        self, tmp_path
+    ):
         (tmp_path / "pyproject.toml").write_text(
             '[project]\ndependencies = ["flask", "fastapi", "pytest"]\n'
         )
@@ -416,7 +426,9 @@ class TestScanRunners:
         assert "python" not in runners
 
     def test_typescript_detected_with_tsconfig(self, tmp_path):
-        (tmp_path / "package.json").write_text(json.dumps({"devDependencies": {"vitest": "^1.0.0"}}))
+        (tmp_path / "package.json").write_text(
+            json.dumps({"devDependencies": {"vitest": "^1.0.0"}})
+        )
         (tmp_path / "tsconfig.json").write_text("{}")
         runners = scan_runners(str(tmp_path))
         assert "typescript" in runners
@@ -531,7 +543,9 @@ class TestBuildBootstrapNote:
 
 class TestBuildStartupContext:
     def test_includes_runner_summary(self):
-        runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}}
+        runners = {
+            "python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}
+        }
         ctx = build_startup_context("/tmp/proj", runners, "standard")
         assert "pytest" in ctx
         assert "tests/" in ctx
@@ -541,7 +555,14 @@ class TestBuildStartupContext:
         assert "thorough" in ctx
 
     def test_bootstrap_note_included_when_needed(self):
-        runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/", "needs_bootstrap": True}}
+        runners = {
+            "python": {
+                "command": "pytest",
+                "args": ["-q"],
+                "test_location": "tests/",
+                "needs_bootstrap": True,
+            }
+        }
         ctx = build_startup_context("/tmp/proj", runners, "standard")
         assert "bootstrap" in ctx.lower() or "pytest" in ctx
 
@@ -582,7 +603,10 @@ class TestDetectPhpRunner:
         assert detect_php_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_composer_without_phpunit_returns_none(self, tmp_path):
-        composer = {"require": {"php": "^8.1"}, "require-dev": {"mockery/mockery": "^1.6"}}
+        composer = {
+            "require": {"php": "^8.1"},
+            "require-dev": {"mockery/mockery": "^1.6"},
+        }
         (tmp_path / "composer.json").write_text(json.dumps(composer))
         assert detect_php_runner(str(tmp_path), str(tmp_path)) is None
 
@@ -649,18 +673,24 @@ class TestDetectRubyRunner:
         assert detect_ruby_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_gemfile_without_rspec_or_minitest_returns_none(self, tmp_path):
-        (tmp_path / "Gemfile").write_text("source 'https://rubygems.org'\ngem 'rails'\n")
+        (tmp_path / "Gemfile").write_text(
+            "source 'https://rubygems.org'\ngem 'rails'\n"
+        )
         assert detect_ruby_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_rspec_gemfile(self, tmp_path):
-        (tmp_path / "Gemfile").write_text("source 'https://rubygems.org'\ngem 'rspec-rails'\n")
+        (tmp_path / "Gemfile").write_text(
+            "source 'https://rubygems.org'\ngem 'rspec-rails'\n"
+        )
         result = detect_ruby_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["command"] == "bundle exec rspec"
         assert "spec/" in result["test_location"]
 
     def test_minitest_gemfile(self, tmp_path):
-        (tmp_path / "Gemfile").write_text("source 'https://rubygems.org'\ngem 'minitest'\n")
+        (tmp_path / "Gemfile").write_text(
+            "source 'https://rubygems.org'\ngem 'minitest'\n"
+        )
         result = detect_ruby_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert "rake test" in result["command"]
@@ -693,7 +723,9 @@ class TestDetectRustRunner:
         assert detect_rust_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_cargo_toml_present(self, tmp_path):
-        (tmp_path / "Cargo.toml").write_text('[package]\nname = "myapp"\nversion = "0.1.0"\n')
+        (tmp_path / "Cargo.toml").write_text(
+            '[package]\nname = "myapp"\nversion = "0.1.0"\n'
+        )
         result = detect_rust_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["command"] == "cargo test"
@@ -711,7 +743,9 @@ class TestDetectJavaRunner:
         assert detect_java_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_maven_pom_xml(self, tmp_path):
-        (tmp_path / "pom.xml").write_text("<project><modelVersion>4.0.0</modelVersion></project>")
+        (tmp_path / "pom.xml").write_text(
+            "<project><modelVersion>4.0.0</modelVersion></project>"
+        )
         result = detect_java_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["command"] == "./mvnw test"
@@ -738,7 +772,9 @@ class TestDetectJavaRunner:
         assert result.get("framework") == "spring"
 
     def test_no_spring_no_framework_key(self, tmp_path):
-        (tmp_path / "pom.xml").write_text("<project><modelVersion>4.0.0</modelVersion></project>")
+        (tmp_path / "pom.xml").write_text(
+            "<project><modelVersion>4.0.0</modelVersion></project>"
+        )
         result = detect_java_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert "framework" not in result
@@ -746,14 +782,18 @@ class TestDetectJavaRunner:
     # V12.3 Kotlin test-path heuristic
 
     def test_kotlin_only_test_dir_uses_src_test_kotlin(self, tmp_path):
-        (tmp_path / "build.gradle.kts").write_text('plugins { kotlin("jvm") version "1.9" }\n')
+        (tmp_path / "build.gradle.kts").write_text(
+            'plugins { kotlin("jvm") version "1.9" }\n'
+        )
         (tmp_path / "src" / "test" / "kotlin").mkdir(parents=True)
         result = detect_java_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["test_location"] == "src/test/kotlin/"
 
     def test_mixed_java_and_kotlin_test_dirs_defaults_to_java(self, tmp_path):
-        (tmp_path / "build.gradle.kts").write_text('plugins { kotlin("jvm") version "1.9" }\n')
+        (tmp_path / "build.gradle.kts").write_text(
+            'plugins { kotlin("jvm") version "1.9" }\n'
+        )
         (tmp_path / "src" / "test" / "java").mkdir(parents=True)
         (tmp_path / "src" / "test" / "kotlin").mkdir(parents=True)
         result = detect_java_runner(str(tmp_path), str(tmp_path))
@@ -777,7 +817,9 @@ class TestDetectDotnetRunner:
         assert detect_dotnet_runner(str(tmp_path), str(tmp_path)) is None
 
     def test_csproj_at_root_detected(self, tmp_path):
-        (tmp_path / "MyApp.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        (tmp_path / "MyApp.csproj").write_text(
+            '<Project Sdk="Microsoft.NET.Sdk"></Project>\n'
+        )
         result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
         assert result is not None
         assert result["command"] == "dotnet test"
@@ -788,7 +830,9 @@ class TestDetectDotnetRunner:
         assert result is not None
 
     def test_layout_flat_default_tests_dir(self, tmp_path):
-        (tmp_path / "MyApp.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        (tmp_path / "MyApp.csproj").write_text(
+            '<Project Sdk="Microsoft.NET.Sdk"></Project>\n'
+        )
         result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
         assert result["test_location"] == "tests/"
         assert "test_projects" not in result
@@ -796,15 +840,17 @@ class TestDetectDotnetRunner:
     def test_layout_single_test_project_sibling(self, tmp_path):
         api = tmp_path / "MyApp.Api"
         api.mkdir()
-        (api / "MyApp.Api.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        (api / "MyApp.Api.csproj").write_text(
+            '<Project Sdk="Microsoft.NET.Sdk"></Project>\n'
+        )
         tests = tmp_path / "MyApp.Api.Tests"
         tests.mkdir()
         (tests / "MyApp.Api.Tests.csproj").write_text(
             '<Project Sdk="Microsoft.NET.Sdk">\n'
-            '  <ItemGroup>\n'
+            "  <ItemGroup>\n"
             '    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />\n'
-            '  </ItemGroup>\n'
-            '</Project>\n'
+            "  </ItemGroup>\n"
+            "</Project>\n"
         )
         result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
         assert result is not None
@@ -815,27 +861,33 @@ class TestDetectDotnetRunner:
         for proj in ("MyApp.Api", "MyApp.Core"):
             d = tmp_path / proj
             d.mkdir()
-            (d / f"{proj}.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+            (d / f"{proj}.csproj").write_text(
+                '<Project Sdk="Microsoft.NET.Sdk"></Project>\n'
+            )
             tests_d = tmp_path / f"{proj}.Tests"
             tests_d.mkdir()
             (tests_d / f"{proj}.Tests.csproj").write_text(
                 '<Project Sdk="Microsoft.NET.Sdk">\n'
-                '  <ItemGroup>\n'
+                "  <ItemGroup>\n"
                 '    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />\n'
-                '  </ItemGroup>\n'
-                '</Project>\n'
+                "  </ItemGroup>\n"
+                "</Project>\n"
             )
         result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
         assert result["test_projects"] == ["MyApp.Api.Tests", "MyApp.Core.Tests"]
         assert result["test_location"] == "MyApp.Api.Tests/"
 
     def test_bin_obj_dirs_skipped_during_walk(self, tmp_path):
-        (tmp_path / "MyApp.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>\n')
+        (tmp_path / "MyApp.csproj").write_text(
+            '<Project Sdk="Microsoft.NET.Sdk"></Project>\n'
+        )
         obj_path = tmp_path / "obj" / "Debug" / "Stale.Tests"
         obj_path.mkdir(parents=True)
-        (obj_path / "Stale.Tests.csproj").write_text('<Project></Project>\n')
+        (obj_path / "Stale.Tests.csproj").write_text("<Project></Project>\n")
         result = detect_dotnet_runner(str(tmp_path), str(tmp_path))
-        assert "test_projects" not in result or "Stale.Tests" not in str(result.get("test_projects", []))
+        assert "test_projects" not in result or "Stale.Tests" not in str(
+            result.get("test_projects", [])
+        )
 
 
 class TestDetectMonorepoDotnet:
@@ -851,8 +903,10 @@ class TestDetectMonorepoDotnet:
 
 class TestCreateSession:
     def test_creates_session_json(self, tmp_path):
-        runners = {"python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}}
-        session = create_session(str(tmp_path), runners, "standard")
+        runners = {
+            "python": {"command": "pytest", "args": ["-q"], "test_location": "tests/"}
+        }
+        create_session(str(tmp_path), runners, "standard")
         session_path = tmp_path / ".tailtest" / "session.json"
         assert session_path.exists()
 
@@ -866,9 +920,21 @@ class TestCreateSession:
     def test_session_has_required_keys(self, tmp_path):
         runners = {}
         session = create_session(str(tmp_path), runners, "standard")
-        for key in ("session_id", "started_at", "project_root", "runners", "depth", "paused",
-                    "pending_files", "touched_files", "fix_attempts", "deferred_failures",
-                    "generated_tests", "packages", "turn_start_mtime"):
+        for key in (
+            "session_id",
+            "started_at",
+            "project_root",
+            "runners",
+            "depth",
+            "paused",
+            "pending_files",
+            "touched_files",
+            "fix_attempts",
+            "deferred_failures",
+            "generated_tests",
+            "packages",
+            "turn_start_mtime",
+        ):
             assert key in session, f"Missing key: {key}"
 
     def test_paused_defaults_to_false(self, tmp_path):
@@ -971,7 +1037,9 @@ class TestExtractStyleSnippet:
 
 class TestDetectCustomHelpers:
     def test_detects_conftest_import(self):
-        snippet = "import pytest\nfrom conftest import create_client\n\ndef test_x(): pass\n"
+        snippet = (
+            "import pytest\nfrom conftest import create_client\n\ndef test_x(): pass\n"
+        )
         result = detect_custom_helpers([snippet])
         assert any("conftest" in h for h in result)
         assert any("create_client" in h for h in result)
@@ -996,7 +1064,9 @@ class TestDetectCustomHelpers:
         assert len(result) <= 5
 
     def test_deduplicates_same_import(self):
-        snippet = "from conftest import create_client\nfrom conftest import create_client\n"
+        snippet = (
+            "from conftest import create_client\nfrom conftest import create_client\n"
+        )
         result = detect_custom_helpers([snippet])
         assert len([h for h in result if "create_client" in h]) == 1
 
@@ -1084,7 +1154,7 @@ class TestDetectMonorepo:
         assert detect_monorepo(str(tmp_path)) is True
 
     def test_nx_json_detected(self, tmp_path):
-        (tmp_path / "nx.json").write_text('{}')
+        (tmp_path / "nx.json").write_text("{}")
         assert detect_monorepo(str(tmp_path)) is True
 
     def test_pnpm_workspace_yaml_detected(self, tmp_path):
@@ -1111,7 +1181,9 @@ class TestScanPackages:
     def test_finds_python_package_at_depth_2(self, tmp_path):
         pkg_dir = tmp_path / "packages" / "api"
         pkg_dir.mkdir(parents=True)
-        (pkg_dir / "pyproject.toml").write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+        (pkg_dir / "pyproject.toml").write_text(
+            '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
         result = scan_packages(str(tmp_path))
         assert "packages/api" in result
         assert "python" in result["packages/api"]
@@ -1122,7 +1194,10 @@ class TestScanPackages:
         (pkg_dir / "package.json").write_text('{"devDependencies":{"vitest":"^1.0.0"}}')
         result = scan_packages(str(tmp_path))
         assert "packages/web" in result
-        assert "javascript" in result["packages/web"] or "typescript" in result["packages/web"]
+        assert (
+            "javascript" in result["packages/web"]
+            or "typescript" in result["packages/web"]
+        )
 
     def test_skips_node_modules(self, tmp_path):
         nm = tmp_path / "node_modules" / "some-pkg"

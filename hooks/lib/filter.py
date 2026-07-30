@@ -22,7 +22,7 @@ LANGUAGE_MAP: dict[str, str] = {
     ".jsx": "javascript",
     ".mjs": "javascript",
     ".cjs": "javascript",
-    ".vue": "javascript",   # Vue SFCs -- runner detected under javascript key
+    ".vue": "javascript",  # Vue SFCs -- runner detected under javascript key
     ".svelte": "javascript",  # Svelte SFCs
     ".ts": "typescript",
     ".tsx": "typescript",
@@ -43,33 +43,85 @@ LANGUAGE_MAP: dict[str, str] = {
 # Intelligence filter constants
 # ---------------------------------------------------------------------------
 
-SKIP_EXTENSIONS: frozenset[str] = frozenset({
-    # Config / data
-    ".yaml", ".yml", ".json", ".toml", ".env", ".ini", ".lock",
-    ".cfg", ".conf", ".properties", ".plist",
-    # Docs
-    ".md", ".rst", ".txt", ".adoc", ".asciidoc",
-    # Templates / markup
-    ".html", ".htm", ".jinja", ".jinja2", ".ejs", ".hbs", ".njk",
-    ".twig", ".mustache", ".erb", ".haml",
-    # GraphQL schemas
-    ".graphql", ".gql",
-    # Infrastructure-as-code
-    ".tf", ".hcl", ".tfvars",
-    # Images / media
-    ".svg", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
-    ".mp4", ".mp3", ".wav", ".pdf",
-    # Styles
-    ".css", ".scss", ".sass", ".less", ".styl",
-    # Data formats
-    ".xml", ".xsd", ".wsdl", ".csv", ".tsv",
-    # Protocols / codegen sources
-    ".proto", ".thrift", ".avsc",
-    # Shell scripts (no standard test runner for hook use)
-    ".sh", ".bash", ".zsh", ".fish", ".ps1", ".bat", ".cmd",
-    # SQL
-    ".sql",
-})
+SKIP_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        # Config / data
+        ".yaml",
+        ".yml",
+        ".json",
+        ".toml",
+        ".env",
+        ".ini",
+        ".lock",
+        ".cfg",
+        ".conf",
+        ".properties",
+        ".plist",
+        # Docs
+        ".md",
+        ".rst",
+        ".txt",
+        ".adoc",
+        ".asciidoc",
+        # Templates / markup
+        ".html",
+        ".htm",
+        ".jinja",
+        ".jinja2",
+        ".ejs",
+        ".hbs",
+        ".njk",
+        ".twig",
+        ".mustache",
+        ".erb",
+        ".haml",
+        # GraphQL schemas
+        ".graphql",
+        ".gql",
+        # Infrastructure-as-code
+        ".tf",
+        ".hcl",
+        ".tfvars",
+        # Images / media
+        ".svg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ico",
+        ".webp",
+        ".mp4",
+        ".mp3",
+        ".wav",
+        ".pdf",
+        # Styles
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".styl",
+        # Data formats
+        ".xml",
+        ".xsd",
+        ".wsdl",
+        ".csv",
+        ".tsv",
+        # Protocols / codegen sources
+        ".proto",
+        ".thrift",
+        ".avsc",
+        # Shell scripts (no standard test runner for hook use)
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".ps1",
+        ".bat",
+        ".cmd",
+        # SQL
+        ".sql",
+    }
+)
 
 # Build-tool config compound suffixes (checked before extension)
 BUILD_CONFIG_SUFFIXES: tuple[str, ...] = (
@@ -125,14 +177,16 @@ TEST_NAME_PATTERNS: tuple[str, ...] = (
 )
 
 # Framework boilerplate entry points
-FRAMEWORK_BOILERPLATE: frozenset[str] = frozenset({
-    "manage.py",
-    "wsgi.py",
-    "asgi.py",
-    "__main__.py",
-    "middleware.ts",
-    "middleware.js",
-})
+FRAMEWORK_BOILERPLATE: frozenset[str] = frozenset(
+    {
+        "manage.py",
+        "wsgi.py",
+        "asgi.py",
+        "__main__.py",
+        "middleware.ts",
+        "middleware.js",
+    }
+)
 
 # Go generated file markers
 GO_GENERATED_PREFIXES: tuple[str, ...] = ("mock_",)
@@ -142,7 +196,9 @@ GO_GENERATED_SUFFIXES: tuple[str, ...] = ("_mock.go", "_gen.go", ".pb.go")
 JS_GENERATED_SUFFIXES: tuple[str, ...] = (".generated.ts", ".graphql.ts")
 
 # Languages that must have a configured runner in session.json to proceed.
-RUNNER_REQUIRED_LANGUAGES: frozenset[str] = frozenset({"php", "go", "ruby", "rust", "java"})
+RUNNER_REQUIRED_LANGUAGES: frozenset[str] = frozenset(
+    {"php", "go", "ruby", "rust", "java"}
+)
 
 
 # ---------------------------------------------------------------------------

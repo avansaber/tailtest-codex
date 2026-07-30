@@ -6,6 +6,7 @@ graceful handling of missing session.json, duplicate deduplication.
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -44,15 +45,53 @@ def _base_session(tmp_path, **kwargs) -> dict:
 
 def _run_hook(tmp_path, event: dict) -> dict:
     import subprocess
+
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(tmp_path / "codex-home")
     result = subprocess.run(
         [sys.executable, STOP_HOOK_PATH],
         input=json.dumps(event),
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
+        env=env,
     )
     assert result.returncode == 0, f"Hook exited non-zero: {result.stderr}"
     return json.loads(result.stdout)
+
+
+def _transcript_path(tmp_path):
+    return tmp_path / "codex-home" / "sessions" / "transcript.jsonl"
+
+
+def _write_user_transcript(
+    tmp_path, user_text: str, trailing_items: list | None = None
+):
+    transcript_path = _transcript_path(tmp_path)
+    transcript_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": user_text}],
+            },
+        },
+        {
+            "type": "event_msg",
+            "payload": {
+                "type": "user_message",
+                "message": user_text,
+            },
+        },
+    ]
+    rows.extend(trailing_items or [])
+    transcript_path.write_text(
+        "".join(f"{json.dumps(row)}\n" for row in rows),
+        encoding="utf-8",
+    )
+    return transcript_path
 
 
 def _event(tmp_path, stop_hook_active: bool = False) -> dict:
@@ -61,8 +100,26 @@ def _event(tmp_path, stop_hook_active: bool = False) -> dict:
         "cwd": str(tmp_path),
         "stop_hook_active": stop_hook_active,
         "last_assistant_message": "I created billing.py",
-        "transcript_path": str(tmp_path / "transcript.jsonl"),
+        "transcript_path": str(_transcript_path(tmp_path)),
     }
+
+
+def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"git unavailable or failed: {result.stderr}")
+    return result
+
+
+def _init_git_repo(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "tailtest@example.invalid")
+    _git(tmp_path, "config", "user.name", "Tailtest")
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +210,47 @@ class TestPythonFileQueued:
         assert entry["language"] == "python"
 
 
+class TestGitCleanMtimeChurn:
+    def test_clean_tracked_file_with_refreshed_mtime_does_not_block(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time() - 5
+        os.utime(src, None)
+        session = _base_session(tmp_path, turn_start_mtime=baseline)
+        _write_session(tmp_path, session)
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out == {}
+        assert saved["pending_files"] == []
+
+    def test_dirty_tracked_file_is_queued_as_legacy_file(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time()
+        time.sleep(0.05)
+        src.write_text("def app():\n    return 2\n")
+        session = _base_session(tmp_path, turn_start_mtime=baseline)
+        _write_session(tmp_path, session)
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out["decision"] == "block"
+        assert saved["pending_files"] == [
+            {"path": "app.py", "language": "python", "status": "legacy-file"}
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Paused session
 # ---------------------------------------------------------------------------
@@ -160,7 +258,9 @@ class TestPythonFileQueued:
 
 class TestPausedSession:
     def test_paused_session_returns_continue(self, tmp_path):
-        session = _base_session(tmp_path, paused=True, turn_start_mtime=time.time() - 10)
+        session = _base_session(
+            tmp_path, paused=True, turn_start_mtime=time.time() - 10
+        )
         _write_session(tmp_path, session)
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
@@ -168,7 +268,9 @@ class TestPausedSession:
         assert "decision" not in out  # empty {} = continue per Codex schema
 
     def test_paused_session_does_not_queue_files(self, tmp_path):
-        session = _base_session(tmp_path, paused=True, turn_start_mtime=time.time() - 10)
+        session = _base_session(
+            tmp_path, paused=True, turn_start_mtime=time.time() - 10
+        )
         _write_session(tmp_path, session)
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
@@ -207,6 +309,7 @@ class TestNoSessionJson:
 
     def test_no_session_json_exits_cleanly(self, tmp_path):
         import subprocess
+
         result = subprocess.run(
             [sys.executable, STOP_HOOK_PATH],
             input=json.dumps({"cwd": str(tmp_path), "stop_hook_active": False}),
@@ -309,7 +412,9 @@ class TestDuplicatePendingFilesNotAdded:
         session = _base_session(
             tmp_path,
             turn_start_mtime=time.time() - 10,
-            pending_files=[{"path": "billing.py", "language": "python", "status": "new-file"}],
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
         )
         _write_session(tmp_path, session)
         _run_hook(tmp_path, _event(tmp_path))
@@ -324,9 +429,301 @@ class TestDuplicatePendingFilesNotAdded:
         session = _base_session(
             tmp_path,
             turn_start_mtime=time.time() - 10,
-            pending_files=[{"path": "billing.py", "language": "python", "status": "new-file"}],
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
         )
         _write_session(tmp_path, session)
         out = _run_hook(tmp_path, _event(tmp_path))
-        # All detected files were already in pending -- no new files, so continue
-        assert "decision" not in out  # empty {} = continue per Codex schema
+        assert out["decision"] == "block"
+        assert "billing.py" in out["reason"]
+
+    def test_existing_pending_file_blocks_without_a_new_mtime_change(self, tmp_path):
+        src = tmp_path / "billing.py"
+        src.write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        assert out["decision"] == "block"
+        assert "billing.py" in out["reason"]
+
+
+class TestExplicitStopDefer:
+    def test_defer_command_continues_and_preserves_pending_queue(self, tmp_path):
+        # Arrange
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+        _write_user_transcript(tmp_path, "/tailtest defer")
+
+        # Act
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        # Assert
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out == {}
+        assert saved["pending_files"] == session["pending_files"]
+
+    def test_canary_no_further_tools_wording_continues(self, tmp_path):
+        # Arrange
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+        _write_user_transcript(
+            tmp_path,
+            "After that single file-writing tool call, invoke no further tools.",
+        )
+
+        # Act
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        # Assert
+        assert out == {}
+
+    def test_normal_user_request_still_blocks_pending_work(self, tmp_path):
+        # Arrange
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+        _write_user_transcript(tmp_path, "Create billing.py and test it.")
+
+        # Act
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        # Assert
+        assert out["decision"] == "block"
+
+    def test_new_file_is_queued_before_defer_is_honored(self, tmp_path):
+        # Arrange
+        session = _base_session(tmp_path, turn_start_mtime=time.time() - 10)
+        _write_session(tmp_path, session)
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        _write_user_transcript(tmp_path, "/tailtest defer")
+
+        # Act
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        # Assert
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out == {}
+        assert saved["pending_files"] == [
+            {"path": "billing.py", "language": "python", "status": "new-file"}
+        ]
+
+    def test_assistant_defer_text_cannot_suppress_stop(self, tmp_path):
+        # Arrange
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+        _write_user_transcript(
+            tmp_path,
+            "Create billing.py and test it.",
+            trailing_items=[
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "/tailtest defer"}],
+                    },
+                }
+            ],
+        )
+
+        # Act
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        # Assert
+        assert out["decision"] == "block"
+
+    def test_transcript_outside_codex_home_cannot_suppress_stop(self, tmp_path):
+        # Arrange
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+        external_transcript = tmp_path / "external-transcript.jsonl"
+        external_transcript.write_text(
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "/tailtest defer",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        event = _event(tmp_path)
+        event["transcript_path"] = str(external_transcript)
+
+        # Act
+        out = _run_hook(tmp_path, event)
+
+        # Assert
+        assert out["decision"] == "block"
+
+    def test_fenced_defer_directive_is_treated_as_user_data(self, tmp_path):
+        # Arrange
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+        _write_user_transcript(
+            tmp_path,
+            "Review this example:\n```\n/tailtest defer\n```\nThen run tests.",
+        )
+
+        # Act
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        # Assert
+        assert out["decision"] == "block"
+
+    @pytest.mark.parametrize(
+        "quoted_text",
+        [
+            "    /tailtest defer",
+            "\t/tailtest defer",
+            "    Do not use any more tools after the write.",
+            "> /tailtest defer",
+            "  > Do not use any more tools after the write.",
+        ],
+    )
+    def test_quoted_or_indented_directive_is_treated_as_user_data(
+        self, tmp_path, quoted_text
+    ):
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        session = _base_session(
+            tmp_path,
+            turn_start_mtime=time.time(),
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
+        )
+        _write_session(tmp_path, session)
+        _write_user_transcript(tmp_path, f"Review this repository text:\n{quoted_text}")
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        assert out["decision"] == "block"
+
+
+@pytest.mark.parametrize("path_kind", ["relative", "absolute"])
+def test_restored_out_of_project_path_is_dropped(tmp_path, path_kind):
+    external = tmp_path.parent / f"{tmp_path.name}_{path_kind}_external.py"
+    external.write_text("import requests\nrequests.get('https://example.invalid')\n")
+    pending_path = (
+        os.path.relpath(external, tmp_path)
+        if path_kind == "relative"
+        else str(external)
+    )
+    session = _base_session(
+        tmp_path,
+        turn_start_mtime=time.time(),
+        pending_files=[
+            {"path": pending_path, "language": "python", "status": "new-file"}
+        ],
+    )
+    _write_session(tmp_path, session)
+
+    out = _run_hook(tmp_path, _event(tmp_path))
+
+    with open(tmp_path / ".tailtest" / "session.json") as fh:
+        saved = json.load(fh)
+    assert out == {}
+    assert saved["pending_files"] == []
+
+
+def test_restored_outward_symlink_path_is_dropped(tmp_path):
+    external = tmp_path.parent / f"{tmp_path.name}_link_external.py"
+    external.write_text("import requests\nrequests.get('https://example.invalid')\n")
+    linked = tmp_path / "linked.py"
+    try:
+        linked.symlink_to(external)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+    session = _base_session(
+        tmp_path,
+        turn_start_mtime=time.time(),
+        pending_files=[
+            {"path": "linked.py", "language": "python", "status": "new-file"}
+        ],
+    )
+    _write_session(tmp_path, session)
+
+    out = _run_hook(tmp_path, _event(tmp_path))
+
+    with open(tmp_path / ".tailtest" / "session.json") as fh:
+        saved = json.load(fh)
+    assert out == {}
+    assert saved["pending_files"] == []
+
+
+@pytest.mark.parametrize(
+    "raw_pending",
+    [
+        "billing.py",
+        ["billing.py"],
+        [{"language": "python", "status": "new-file"}],
+    ],
+)
+def test_malformed_restored_pending_state_is_dropped(tmp_path, raw_pending):
+    session = _base_session(
+        tmp_path,
+        turn_start_mtime=time.time(),
+        pending_files=raw_pending,
+    )
+    _write_session(tmp_path, session)
+
+    out = _run_hook(tmp_path, _event(tmp_path))
+
+    with open(tmp_path / ".tailtest" / "session.json") as fh:
+        saved = json.load(fh)
+    assert out == {}
+    assert saved["pending_files"] == []

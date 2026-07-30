@@ -4,9 +4,10 @@
 # Usage (from any project root):
 #   bash ~/.codex/plugins/tailtest/scripts/init.sh
 #
-# This creates .codex/hooks.json in the current directory pointing at the
-# tailtest hook scripts, so Codex fires SessionStart and Stop hooks while
-# you work in this project. Run once per project.
+# This creates .codex/hooks.json in the current directory with absolute
+# commands for the tailtest hook scripts, so Codex fires SessionStart,
+# PostToolUse, and Stop hooks while you work in this project. Run once per
+# project when using a direct clone rather than the Codex marketplace.
 #
 # Prerequisites:
 #   1. Plugin cloned to ~/.codex/plugins/tailtest (or accessible PLUGIN_DIR)
@@ -27,17 +28,66 @@ fi
 
 mkdir -p "$PROJECT_DIR/.codex"
 
+if command -v python3 >/dev/null 2>&1 && python3 -c "import json" >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1 && python -c "import json" >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "error: Python is required to initialize tailtest hooks"
+  exit 1
+fi
+
+PLUGIN_DIR_NATIVE="$PLUGIN_DIR"
+if command -v cygpath >/dev/null 2>&1; then
+  PLUGIN_DIR_NATIVE="$(cygpath -w "$PLUGIN_DIR")"
+fi
+
+DESIRED_HOOKS="$(mktemp "${TMPDIR:-/tmp}/tailtest-hooks.XXXXXX.json")"
+trap 'rm -f "$DESIRED_HOOKS"' EXIT
+
+"$PYTHON_BIN" - "$PLUGIN_DIR_NATIVE" "$PLUGIN_DIR/hooks/hooks.json" "$DESIRED_HOOKS" <<'PY'
+import json
+import os
+import sys
+
+plugin_root, source_path, output_path = sys.argv[1:]
+plugin_root = plugin_root.replace("\\", "/").rstrip("/")
+
+with open(source_path, encoding="utf-8") as source:
+    config = json.load(source)
+
+for groups in config["hooks"].values():
+    for group in groups:
+        for handler in group["hooks"]:
+            command = handler["command"]
+            script_name = command.rsplit("/", 1)[-1].rstrip('"')
+            handler["command"] = (
+                'TAILTEST_PROJECT_CWD="$PWD"; export TAILTEST_PROJECT_CWD; '
+                f'cd -- "{plugin_root}" && '
+                f'python3 "{plugin_root}/hooks/{script_name}"'
+            )
+            handler["commandWindows"] = (
+                'set "TAILTEST_PROJECT_CWD=%CD%" && '
+                f'cd /d "{plugin_root}" && '
+                f'python "{plugin_root}/hooks/{script_name}"'
+            )
+
+with open(output_path, "w", encoding="utf-8", newline="\n") as output:
+    json.dump(config, output, indent=2)
+    output.write("\n")
+PY
+
 if [ -e "$PROJECT_DIR/.codex/hooks.json" ]; then
-  if cmp -s "$PLUGIN_DIR/hooks/hooks.json" "$PROJECT_DIR/.codex/hooks.json"; then
+  if cmp -s "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json"; then
     echo "tailtest: .codex/hooks.json already matches plugin config, nothing to do"
   else
     echo "tailtest: .codex/hooks.json already exists with different content"
     echo "          writing plugin config to .codex/hooks.json.tailtest instead"
-    echo "          merge the SessionStart and Stop entries manually"
-    cp "$PLUGIN_DIR/hooks/hooks.json" "$PROJECT_DIR/.codex/hooks.json.tailtest"
+    echo "          merge the SessionStart, PostToolUse, and Stop entries manually"
+    cp "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json.tailtest"
   fi
 else
-  cp "$PLUGIN_DIR/hooks/hooks.json" "$PROJECT_DIR/.codex/hooks.json"
+  cp "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json"
   echo "tailtest: wrote .codex/hooks.json -> $PLUGIN_DIR/hooks/"
 fi
 

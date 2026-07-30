@@ -42,13 +42,30 @@ RAMP_UP_EXT_MAP: dict[str, str] = {
 }
 
 # Directories to skip during ramp-up walk
-RAMP_UP_SKIP_DIRS: frozenset[str] = frozenset({
-    "node_modules", ".venv", "venv", "dist", "build",
-    "__pycache__", "vendor", ".git", "generated", ".tailtest",
-    "coverage", ".next", ".nuxt", "target", ".cargo",
-    ".pytest_cache", ".mypy_cache", ".ruff_cache", ".nyc_output",
-    ".svelte-kit",
-})
+RAMP_UP_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        "node_modules",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        "__pycache__",
+        "vendor",
+        ".git",
+        "generated",
+        ".tailtest",
+        "coverage",
+        ".next",
+        ".nuxt",
+        "target",
+        ".cargo",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".nyc_output",
+        ".svelte-kit",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -98,8 +115,12 @@ def _detect_py_web_framework(directory: str, text: str) -> Optional[str]:
         return None
 
     entry_point_names = (
-        "app.py", "main.py", "wsgi.py", "asgi.py",
-        "src/app.py", "src/main.py",
+        "app.py",
+        "main.py",
+        "wsgi.py",
+        "asgi.py",
+        "src/app.py",
+        "src/main.py",
     )
     for name in entry_point_names:
         path = os.path.join(directory, name)
@@ -162,17 +183,15 @@ def detect_php_runner(directory: str, project_root: str) -> Optional[dict]:
 
     require_dev: dict = composer.get("require-dev", {})
     has_phpunit = any("phpunit" in k for k in require_dev)
-    has_config = (
-        os.path.exists(os.path.join(directory, "phpunit.xml")) or
-        os.path.exists(os.path.join(directory, "phpunit.xml.dist"))
-    )
+    has_config = os.path.exists(
+        os.path.join(directory, "phpunit.xml")
+    ) or os.path.exists(os.path.join(directory, "phpunit.xml.dist"))
     if not has_phpunit and not has_config:
         return None
 
     require: dict = composer.get("require", {})
-    is_laravel = (
-        "laravel/framework" in require and
-        os.path.exists(os.path.join(directory, "artisan"))
+    is_laravel = "laravel/framework" in require and os.path.exists(
+        os.path.join(directory, "artisan")
     )
     runner: dict = {
         "command": "./vendor/bin/phpunit",
@@ -248,19 +267,23 @@ def detect_rust_runner(directory: str, project_root: str) -> Optional[dict]:
 def detect_java_runner(directory: str, project_root: str) -> Optional[dict]:
     """Detect Java test runner from pom.xml (Maven) or build.gradle (Gradle)."""
     has_maven = os.path.exists(os.path.join(directory, "pom.xml"))
-    has_gradle = (
-        os.path.exists(os.path.join(directory, "build.gradle")) or
-        os.path.exists(os.path.join(directory, "build.gradle.kts"))
-    )
+    has_gradle = os.path.exists(
+        os.path.join(directory, "build.gradle")
+    ) or os.path.exists(os.path.join(directory, "build.gradle.kts"))
     if not has_maven and not has_gradle:
         return None
 
     command = "./mvnw test" if has_maven else "./gradlew test"
     framework = None
     try:
-        build_file = "pom.xml" if has_maven else (
-            "build.gradle" if os.path.exists(os.path.join(directory, "build.gradle"))
-            else "build.gradle.kts"
+        build_file = (
+            "pom.xml"
+            if has_maven
+            else (
+                "build.gradle"
+                if os.path.exists(os.path.join(directory, "build.gradle"))
+                else "build.gradle.kts"
+            )
         )
         content = open(os.path.join(directory, build_file)).read()
         if "spring-boot" in content:
@@ -339,9 +362,9 @@ def detect_node_runner(directory: str, project_root: str) -> Optional[dict]:
     elif "next" in all_deps:
         framework = "nextjs"
     elif (
-        "nuxt" in all_deps or
-        os.path.exists(os.path.join(directory, "nuxt.config.ts")) or
-        os.path.exists(os.path.join(directory, "nuxt.config.js"))
+        "nuxt" in all_deps
+        or os.path.exists(os.path.join(directory, "nuxt.config.ts"))
+        or os.path.exists(os.path.join(directory, "nuxt.config.js"))
     ):
         framework = "nuxt"
 
@@ -358,10 +381,9 @@ def detect_node_runner(directory: str, project_root: str) -> Optional[dict]:
 
 def detect_deno_runner(directory: str, project_root: str) -> Optional[dict]:
     """Detect Deno test runner from deno.json or deno.jsonc."""
-    has_deno_json = (
-        os.path.exists(os.path.join(directory, "deno.json")) or
-        os.path.exists(os.path.join(directory, "deno.jsonc"))
-    )
+    has_deno_json = os.path.exists(
+        os.path.join(directory, "deno.json")
+    ) or os.path.exists(os.path.join(directory, "deno.jsonc"))
     if not has_deno_json:
         return None
     return {
@@ -397,7 +419,10 @@ def _find_dotnet_test_projects(directory: str, project_root: str) -> list[str]:
                     try:
                         with open(entry.path) as fh:
                             content = fh.read()
-                        if "Microsoft.NET.Test.Sdk" in content or 'IsTestProject' in content:
+                        if (
+                            "Microsoft.NET.Test.Sdk" in content
+                            or "IsTestProject" in content
+                        ):
                             is_test_by_content = True
                     except OSError:
                         pass
@@ -406,7 +431,11 @@ def _find_dotnet_test_projects(directory: str, project_root: str) -> list[str]:
                         os.path.dirname(entry.path), project_root
                     ).replace("\\", "/")
                     found.add(rel_dir)
-            elif entry.is_dir() and entry.name not in skip and not entry.name.startswith("."):
+            elif (
+                entry.is_dir()
+                and entry.name not in skip
+                and not entry.name.startswith(".")
+            ):
                 _walk(entry.path, depth + 1)
 
     _walk(directory, 0)
@@ -420,14 +449,24 @@ def detect_dotnet_runner(directory: str, project_root: str) -> Optional[dict]:
     Per-source-file test-project selection happens in the rule file at
     test-write time.
     """
-    has_sln = any(
-        f.endswith(".sln")
-        for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))
-    ) if os.path.isdir(directory) else False
-    has_csproj = any(
-        f.endswith(".csproj")
-        for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))
-    ) if os.path.isdir(directory) else False
+    has_sln = (
+        any(
+            f.endswith(".sln")
+            for f in os.listdir(directory)
+            if os.path.isfile(os.path.join(directory, f))
+        )
+        if os.path.isdir(directory)
+        else False
+    )
+    has_csproj = (
+        any(
+            f.endswith(".csproj")
+            for f in os.listdir(directory)
+            if os.path.isfile(os.path.join(directory, f))
+        )
+        if os.path.isdir(directory)
+        else False
+    )
     has_global_json = os.path.exists(os.path.join(directory, "global.json"))
 
     if not (has_sln or has_csproj or has_global_json):
@@ -473,7 +512,15 @@ def _find_test_location(directory: str, language: str) -> Optional[str]:
     if language == "python":
         candidates = ["tests", "test", "src/tests", "src/test", "testing"]
     else:
-        candidates = ["__tests__", "tests", "test", "spec", "src/__tests__", "src/test", "src/spec"]
+        candidates = [
+            "__tests__",
+            "tests",
+            "test",
+            "spec",
+            "src/__tests__",
+            "src/test",
+            "src/spec",
+        ]
 
     for candidate in candidates:
         if os.path.isdir(os.path.join(directory, candidate)):
@@ -491,7 +538,11 @@ def _iter_top_dirs(project_root: str):
     skip = {"node_modules", ".venv", "venv", "dist", "build", "__pycache__", "vendor"}
     try:
         for entry in os.scandir(project_root):
-            if entry.is_dir() and not entry.name.startswith(".") and entry.name not in skip:
+            if (
+                entry.is_dir()
+                and not entry.name.startswith(".")
+                and entry.name not in skip
+            ):
                 yield entry.path
     except OSError:
         pass
@@ -539,8 +590,15 @@ def scan_runners(project_root: str) -> dict:
     try:
         for entry in os.scandir(project_root):
             if entry.is_dir() and not entry.name.startswith("."):
-                if entry.name in ("node_modules", ".venv", "venv", "dist",
-                                  "build", "__pycache__", "vendor"):
+                if entry.name in (
+                    "node_modules",
+                    ".venv",
+                    "venv",
+                    "dist",
+                    "build",
+                    "__pycache__",
+                    "vendor",
+                ):
                     continue
                 _try_dir(entry.path)
     except OSError:
@@ -570,16 +628,25 @@ def detect_monorepo(project_root: str) -> bool:
     except OSError:
         pass
 
-    _skip = {"node_modules", ".venv", "venv", ".git", "dist", "build", "__pycache__", "vendor"}
+    _skip = {
+        "node_modules",
+        ".venv",
+        "venv",
+        ".git",
+        "dist",
+        "build",
+        "__pycache__",
+        "vendor",
+    }
     count = 0
     try:
         for entry in os.scandir(project_root):
             if not entry.is_dir() or entry.name.startswith(".") or entry.name in _skip:
                 continue
             if (
-                os.path.exists(os.path.join(entry.path, "package.json")) or
-                os.path.exists(os.path.join(entry.path, "pyproject.toml")) or
-                os.path.exists(os.path.join(entry.path, "composer.json"))
+                os.path.exists(os.path.join(entry.path, "package.json"))
+                or os.path.exists(os.path.join(entry.path, "pyproject.toml"))
+                or os.path.exists(os.path.join(entry.path, "composer.json"))
             ):
                 count += 1
                 if count >= 2:
@@ -593,8 +660,17 @@ def scan_packages(project_root: str) -> dict:
     """Scan for per-package runners in a monorepo."""
     packages: dict = {}
     _skip = {
-        "node_modules", ".venv", "venv", ".git", "dist", "build",
-        "__pycache__", "vendor", ".svelte-kit", ".next", ".nuxt",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".git",
+        "dist",
+        "build",
+        "__pycache__",
+        "vendor",
+        ".svelte-kit",
+        ".next",
+        ".nuxt",
     }
 
     def _try_package(directory: str) -> None:
@@ -607,9 +683,11 @@ def scan_packages(project_root: str) -> dict:
             runners["python"] = {k: v for k, v in py.items() if k != "needs_bootstrap"}
         node = detect_node_runner(directory, project_root)
         if node:
-            key = "typescript" if os.path.exists(
-                os.path.join(directory, "tsconfig.json")
-            ) else "javascript"
+            key = (
+                "typescript"
+                if os.path.exists(os.path.join(directory, "tsconfig.json"))
+                else "javascript"
+            )
             runners[key] = {k: v for k, v in node.items() if k != "needs_bootstrap"}
         else:
             deno = detect_deno_runner(directory, project_root)
@@ -643,7 +721,11 @@ def scan_packages(project_root: str) -> dict:
             _try_package(entry.path)
             try:
                 for sub in os.scandir(entry.path):
-                    if not sub.is_dir() or sub.name.startswith(".") or sub.name in _skip:
+                    if (
+                        not sub.is_dir()
+                        or sub.name.startswith(".")
+                        or sub.name in _skip
+                    ):
                         continue
                     _try_package(sub.path)
             except OSError:
@@ -680,7 +762,12 @@ def read_depth(project_root: str) -> str:
     config_path = os.path.join(project_root, ".tailtest", "config.json")
     if os.path.exists(config_path):
         cfg = _read_json(config_path)
-        if cfg and cfg.get("depth") in ("simple", "standard", "thorough", "adversarial"):
+        if cfg and cfg.get("depth") in (
+            "simple",
+            "standard",
+            "thorough",
+            "adversarial",
+        ):
             return cfg["depth"]
     return "standard"
 
@@ -699,6 +786,7 @@ def create_session(project_root: str, runners: dict, depth: str) -> dict:
     Key difference from tailtest-v3: includes turn_start_mtime for Stop hook.
     """
     import time
+
     packages = scan_packages(project_root) if detect_monorepo(project_root) else {}
 
     session_id = make_session_id()
@@ -706,8 +794,10 @@ def create_session(project_root: str, runners: dict, depth: str) -> dict:
         "session_id": session_id,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "project_root": project_root,
-        "runners": {k: {kk: vv for kk, vv in v.items() if kk != "needs_bootstrap"}
-                    for k, v in runners.items()},
+        "runners": {
+            k: {kk: vv for kk, vv in v.items() if kk != "needs_bootstrap"}
+            for k, v in runners.items()
+        },
         "depth": depth,
         "paused": False,
         "report_path": f".tailtest/reports/{session_id}.md",

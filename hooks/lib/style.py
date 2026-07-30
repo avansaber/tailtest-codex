@@ -23,7 +23,15 @@ def find_recent_test_files(
 ) -> list[str]:
     """Return up to max_files most-recently-modified test file paths (absolute)."""
     candidates: list[tuple[float, str]] = []
-    _skip_dirs = {"node_modules", ".venv", "venv", "__pycache__", "dist", "build", "vendor"}
+    _skip_dirs = {
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "dist",
+        "build",
+        "vendor",
+    }
 
     for language, runner in runners.items():
         patterns = TEST_FILE_PATTERNS.get(language, [])
