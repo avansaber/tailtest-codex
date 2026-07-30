@@ -116,6 +116,10 @@ class TestGitCleanMtimeChurnSkipped:
         src = tmp_path / "app.py"
         src.write_text("def app():\n    return 1\n")
         baseline = time.time() - 5
+        monkeypatch.setattr(
+            "hooks.lib.scanner.resolve_trusted_executable",
+            lambda name, project_root: "git",
+        )
 
         def fake_git_run(command, **_kwargs):
             if command == ["git", "rev-parse", "--is-inside-work-tree"]:

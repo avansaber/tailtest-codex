@@ -157,6 +157,10 @@ def _user_requested_tool_stop(event: dict) -> bool:
     fence_opener: tuple[str, int] | None = None
     for line in _latest_user_message(event).splitlines():
         stripped = line.strip()
+        if not stripped:
+            continue
+        if line != line.lstrip():
+            continue
         if stripped.startswith(">"):
             continue
         fence_match = re.match(r"^([`~])\1{2,}", stripped)
@@ -222,7 +226,9 @@ def main() -> None:
     except json.JSONDecodeError:
         event = {}
 
-    project_root: str = event.get("cwd", os.getcwd())
+    project_root: str = (
+        event.get("cwd") or os.environ.get("TAILTEST_PROJECT_CWD") or os.getcwd()
+    )
 
     # Loop guard: if Codex set stop_hook_active, this turn was triggered by
     # a previous hook block.  Let it continue so tests can run.

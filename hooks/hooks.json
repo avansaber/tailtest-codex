@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/hooks/session_start.py\"",
-            "commandWindows": "python \"%PLUGIN_ROOT%\\hooks\\session_start.py\""
+            "command": "TAILTEST_PROJECT_CWD=\"$PWD\"; export TAILTEST_PROJECT_CWD; cd -- \"${PLUGIN_ROOT}\" && python3 \"${PLUGIN_ROOT}/hooks/session_start.py\"",
+            "commandWindows": "set \"TAILTEST_PROJECT_CWD=%CD%\" && cd /d \"%PLUGIN_ROOT%\" && python \"%PLUGIN_ROOT%\\hooks\\session_start.py\""
           }
         ]
       }
@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/hooks/post_tool_use.py\"",
-            "commandWindows": "python \"%PLUGIN_ROOT%\\hooks\\post_tool_use.py\""
+            "command": "TAILTEST_PROJECT_CWD=\"$PWD\"; export TAILTEST_PROJECT_CWD; cd -- \"${PLUGIN_ROOT}\" && python3 \"${PLUGIN_ROOT}/hooks/post_tool_use.py\"",
+            "commandWindows": "set \"TAILTEST_PROJECT_CWD=%CD%\" && cd /d \"%PLUGIN_ROOT%\" && python \"%PLUGIN_ROOT%\\hooks\\post_tool_use.py\""
           }
         ]
       }
@@ -30,8 +30,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/hooks/stop.py\"",
-            "commandWindows": "python \"%PLUGIN_ROOT%\\hooks\\stop.py\""
+            "command": "TAILTEST_PROJECT_CWD=\"$PWD\"; export TAILTEST_PROJECT_CWD; cd -- \"${PLUGIN_ROOT}\" && python3 \"${PLUGIN_ROOT}/hooks/stop.py\"",
+            "commandWindows": "set \"TAILTEST_PROJECT_CWD=%CD%\" && cd /d \"%PLUGIN_ROOT%\" && python \"%PLUGIN_ROOT%\\hooks\\stop.py\""
           }
         ]
       }

@@ -4,8 +4,10 @@
 # Usage (from any project root):
 #   bash ~/.codex/plugins/tailtest/scripts/init.sh
 #
-# This creates .codex/hooks.json in the current directory with absolute hook
-# commands, so direct clones work without relying on plugin-root variables.
+# This creates .codex/hooks.json in the current directory with absolute
+# commands for the tailtest hook scripts, so Codex fires SessionStart,
+# PostToolUse, and Stop hooks while you work in this project. Run once per
+# project when using a direct clone rather than the Codex marketplace.
 #
 # Prerequisites:
 #   1. Plugin cloned to ~/.codex/plugins/tailtest (or accessible PLUGIN_DIR)
@@ -43,15 +45,13 @@ fi
 DESIRED_HOOKS="$(mktemp "${TMPDIR:-/tmp}/tailtest-hooks.XXXXXX.json")"
 trap 'rm -f "$DESIRED_HOOKS"' EXIT
 
-"$PYTHON_BIN" - "$PLUGIN_DIR" "$PLUGIN_DIR_NATIVE" "$PLUGIN_DIR/hooks/hooks.json" "$DESIRED_HOOKS" <<'PY'
+"$PYTHON_BIN" - "$PLUGIN_DIR_NATIVE" "$PLUGIN_DIR/hooks/hooks.json" "$DESIRED_HOOKS" <<'PY'
 import json
-import shlex
 import sys
 
-posix_root, windows_root, source_path, output_path = sys.argv[1:]
-posix_root = posix_root.rstrip("/")
-windows_root = windows_root.replace("\\", "/").rstrip("/")
-if '"' in windows_root:
+plugin_root, source_path, output_path = sys.argv[1:]
+plugin_root = plugin_root.replace("\\", "/").rstrip("/")
+if '"' in plugin_root:
     raise SystemExit("error: plugin path contains an unsupported double quote")
 
 with open(source_path, encoding="utf-8") as source:
@@ -61,10 +61,16 @@ for groups in config["hooks"].values():
     for group in groups:
         for handler in group["hooks"]:
             script_name = handler["command"].rsplit("/", 1)[-1].rstrip('"')
-            posix_script = f"{posix_root}/hooks/{script_name}"
-            windows_script = f"{windows_root}/hooks/{script_name}"
-            handler["command"] = f"python3 {shlex.quote(posix_script)}"
-            handler["commandWindows"] = f'python "{windows_script}"'
+            handler["command"] = (
+                'TAILTEST_PROJECT_CWD="$PWD"; export TAILTEST_PROJECT_CWD; '
+                f'cd -- "{plugin_root}" && '
+                f'python3 "{plugin_root}/hooks/{script_name}"'
+            )
+            handler["commandWindows"] = (
+                'set "TAILTEST_PROJECT_CWD=%CD%" && '
+                f'cd /d "{plugin_root}" && '
+                f'python "{plugin_root}/hooks/{script_name}"'
+            )
 
 with open(output_path, "w", encoding="utf-8", newline="\n") as output:
     json.dump(config, output, indent=2)

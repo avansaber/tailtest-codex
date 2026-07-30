@@ -63,7 +63,9 @@ def main() -> None:
 
     # Codex sends hook_event_name; source field mirrors Claude Code convention
     source: str = event.get("source", event.get("event_type", "startup"))
-    project_root: str = event.get("cwd", os.getcwd())
+    project_root: str = (
+        event.get("cwd") or os.environ.get("TAILTEST_PROJECT_CWD") or os.getcwd()
+    )
 
     # Prefer Codex's plugin root, then compatibility variables and source fallback.
     plugin_root = (

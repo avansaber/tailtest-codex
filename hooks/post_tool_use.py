@@ -55,7 +55,9 @@ def main() -> None:
 
     tool_name = event.get("tool_name", "") or ""
     tool_input = event.get("tool_input") or {}
-    project_root = event.get("cwd", os.getcwd())
+    project_root = (
+        event.get("cwd") or os.environ.get("TAILTEST_PROJECT_CWD") or os.getcwd()
+    )
 
     # Quick exit: tool is not in the mutating set
     if tool_name not in FILE_MUTATING_TOOLS:

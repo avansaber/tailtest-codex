@@ -36,10 +36,16 @@ def test_hook_commands_resolve_scripts_inside_plugin_bundle():
     for groups in _hooks().values():
         for group in groups:
             for handler in group["hooks"]:
-                assert "${PLUGIN_ROOT}" in handler["command"]
-                assert "%PLUGIN_ROOT%" in handler["commandWindows"]
-                assert "$HOME" not in handler["command"]
-                script_name = Path(handler["command"].rsplit("/", 1)[-1].rstrip('"'))
+                command = handler["command"]
+                command_windows = handler["commandWindows"]
+                assert "${PLUGIN_ROOT}" in command
+                assert "%PLUGIN_ROOT%" in command_windows
+                assert "TAILTEST_PROJECT_CWD" in command
+                assert "TAILTEST_PROJECT_CWD" in command_windows
+                assert "cd --" in command
+                assert "cd /d" in command_windows
+                assert "$HOME" not in command
+                script_name = Path(command.rsplit("/", 1)[-1].rstrip('"'))
                 assert (PLUGIN_ROOT / "hooks" / script_name).is_file()
 
 
@@ -63,12 +69,43 @@ def test_windows_manifest_command_executes_session_start_hook(tmp_path):
         json.loads(result.stdout)["hookSpecificOutput"]["hookEventName"]
         == "SessionStart"
     )
+    assert (tmp_path / ".tailtest" / "session.json").is_file()
+    assert not (tmp_path / "AGENTS.md").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows executable lookup")
+@pytest.mark.parametrize("event_name", ["SessionStart", "PostToolUse", "Stop"])
+def test_windows_manifest_commands_ignore_project_python_shim(tmp_path, event_name):
+    marker = f"SHADOW_PYTHON_{event_name}"
+    (tmp_path / "python.cmd").write_text(
+        f"@echo off\r\necho {marker}\r\nexit /b 0\r\n",
+        encoding="utf-8",
+    )
+    handler = _hooks()[event_name][0]["hooks"][0]
+    env = os.environ.copy()
+    env["PLUGIN_ROOT"] = str(PLUGIN_ROOT)
+
+    result = subprocess.run(
+        f'cmd.exe /D /S /C "{handler["commandWindows"]}"',
+        input="{}",
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert marker not in result.stdout
 
 
 def test_initializer_materializes_absolute_project_hook_commands(tmp_path):
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
     bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
-    if not bash or (os.name == "nt" and "system32" in bash.lower()):
+    if not bash or (
+        os.name == "nt"
+        and Path(bash).name.lower() == "bash.exe"
+        and "system32" in bash.lower()
+    ):
         pytest.skip("bash is unavailable")
 
     result = subprocess.run(
@@ -89,11 +126,32 @@ def test_initializer_materializes_absolute_project_hook_commands(tmp_path):
                 assert match
                 assert Path(match.group(1)).is_file()
 
+    if os.name == "nt":
+        marker = "SHADOW_PYTHON_INITIALIZED"
+        (tmp_path / "python.cmd").write_text(
+            f"@echo off\r\necho {marker}\r\nexit /b 0\r\n",
+            encoding="utf-8",
+        )
+        command = installed["hooks"]["SessionStart"][0]["hooks"][0]["commandWindows"]
+        hook = subprocess.run(
+            f'cmd.exe /D /S /C "{command}"',
+            input=json.dumps({"source": "startup", "cwd": str(tmp_path)}),
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert hook.returncode == 0, hook.stderr
+        assert marker not in hook.stdout
+
 
 def test_initializer_preserves_conflicting_hooks_as_sidecar(tmp_path):
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
     bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
-    if not bash or (os.name == "nt" and "system32" in bash.lower()):
+    if not bash or (
+        os.name == "nt"
+        and Path(bash).name.lower() == "bash.exe"
+        and "system32" in bash.lower()
+    ):
         pytest.skip("bash is unavailable")
 
     existing = tmp_path / ".codex" / "hooks.json"
@@ -117,7 +175,11 @@ def test_initializer_preserves_conflicting_hooks_as_sidecar(tmp_path):
 def test_initializer_fails_cleanly_when_python_is_unavailable(tmp_path):
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
     bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
-    if not bash or (os.name == "nt" and "system32" in bash.lower()):
+    if not bash or (
+        os.name == "nt"
+        and Path(bash).name.lower() == "bash.exe"
+        and "system32" in bash.lower()
+    ):
         pytest.skip("bash is unavailable")
 
     fake_bin = tmp_path / "no-python-bin"

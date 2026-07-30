@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 
+from .executables import resolve_trusted_executable
 from .filter import detect_language, is_filtered
 
 # Directories pruned during walk for performance.
@@ -123,9 +124,13 @@ def sweep_mtime_changed(
 
 def _git_changed_paths(project_root: str) -> set[str] | None:
     """Return content/index changed or untracked paths, or None outside Git."""
+    git_executable = resolve_trusted_executable("git", project_root)
+    if git_executable is None:
+        return None
+
     try:
         inside = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
+            [git_executable, "rev-parse", "--is-inside-work-tree"],
             capture_output=True,
             cwd=project_root,
             text=True,
@@ -138,9 +143,9 @@ def _git_changed_paths(project_root: str) -> set[str] | None:
         return None
 
     commands = (
-        ["git", "diff", "--no-renames", "--name-only", "-z"],
-        ["git", "diff", "--cached", "--no-renames", "--name-only", "-z"],
-        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        [git_executable, "diff", "--no-renames", "--name-only", "-z"],
+        [git_executable, "diff", "--cached", "--no-renames", "--name-only", "-z"],
+        [git_executable, "ls-files", "--others", "--exclude-standard", "-z"],
     )
     paths: set[str] = set()
     for command in commands:

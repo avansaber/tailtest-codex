@@ -9,6 +9,7 @@ import os
 import subprocess
 import time
 
+from hooks.lib.executables import resolve_trusted_executable
 from hooks.lib.filter import _norm
 
 
@@ -314,9 +315,12 @@ def is_git_tracked(file_path: str, project_root: str) -> bool | None:
     """Return True if tracked by git, False if untracked, None if git unavailable."""
     if not os.path.isdir(os.path.join(project_root, ".git")):
         return None
+    git_executable = resolve_trusted_executable("git", project_root)
+    if git_executable is None:
+        return None
     try:
         result = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", os.path.abspath(file_path)],
+            [git_executable, "ls-files", "--error-unmatch", os.path.abspath(file_path)],
             capture_output=True,
             cwd=project_root,
             timeout=2,
