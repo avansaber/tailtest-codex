@@ -49,12 +49,16 @@ FILE_MUTATING_TOOLS = PATCH_TOOLS | SHELL_TOOLS
 def main() -> None:
     try:
         raw = sys.stdin.read()
-        event: dict = json.loads(raw) if raw.strip() else {}
+        event = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
         sys.exit(0)
+    if not isinstance(event, dict):
+        event = {}
 
     tool_name = event.get("tool_name", "") or ""
     tool_input = event.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        tool_input = {}
     project_root = (
         event.get("cwd") or os.environ.get("TAILTEST_PROJECT_CWD") or os.getcwd()
     )

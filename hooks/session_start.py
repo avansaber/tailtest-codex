@@ -57,8 +57,10 @@ def _has_usable_restored_session(session: dict) -> bool:
 def main() -> None:
     try:
         raw = sys.stdin.read()
-        event: dict = json.loads(raw) if raw.strip() else {}
+        event = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
+        event = {}
+    if not isinstance(event, dict):
         event = {}
 
     # Codex sends hook_event_name; source field mirrors Claude Code convention

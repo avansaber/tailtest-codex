@@ -5,6 +5,8 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 from hooks import session_start as session_start_hook
 from hooks.lib.session import save_session
 
@@ -33,12 +35,22 @@ def _base_session(project_root: str, turn_start_mtime: float) -> dict:
     }
 
 
-def _run_session_start(tmp_path, monkeypatch, capsys, payload: dict) -> dict:
+def _run_session_start(tmp_path, monkeypatch, capsys, payload: object) -> dict:
     monkeypatch.setattr(session_start_hook, "read_agents_md", lambda _plugin_root: "")
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     session_start_hook.main()
     out = capsys.readouterr().out.strip()
     return json.loads(out) if out else {}
+
+
+@pytest.mark.parametrize("payload", [[], None, "unexpected scalar"])
+def test_non_mapping_event_payload_uses_empty_event(tmp_path, monkeypatch, capsys, payload):
+    monkeypatch.setenv("TAILTEST_PROJECT_CWD", str(tmp_path))
+
+    output = _run_session_start(tmp_path, monkeypatch, capsys, payload)
+
+    assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert (tmp_path / ".tailtest" / "session.json").is_file()
 
 
 def _run_session_start_process(plugin_root, project_root, payload: dict):

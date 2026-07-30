@@ -56,7 +56,7 @@ def _base_session(tmp_path, **kwargs) -> dict:
     return session
 
 
-def _run_hook(tmp_path, event: dict) -> tuple[int, dict]:
+def _run_hook(tmp_path, event: object) -> tuple[int, dict]:
     """Run the hook and return (exit_code, parsed_stdout_or_empty)."""
     result = subprocess.run(
         [sys.executable, POST_TOOL_HOOK_PATH],
@@ -556,3 +556,20 @@ def test_malformed_event_exits_silent(tmp_path):
     )
     assert result.returncode == 0
     assert result.stdout.strip() == ""
+
+
+@pytest.mark.parametrize("payload", [[], None, "unexpected scalar"])
+def test_non_mapping_event_payload_exits_silent(tmp_path, payload):
+    code, out = _run_hook(tmp_path, payload)
+
+    assert code == 0
+    assert out == {}
+
+
+def test_non_mapping_tool_input_exits_silent(tmp_path):
+    _write_session(tmp_path, _base_session(tmp_path))
+
+    code, out = _run_hook(tmp_path, {"tool_name": "Edit", "tool_input": []})
+
+    assert code == 0
+    assert out == {}
