@@ -9,10 +9,10 @@ Tests parity-clean with tailtest and tailtest-cursor V13 test files.
 
 import json
 import os
+
 import pytest
 
 from hooks.lib.runners import read_depth
-
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RULE_FILE = os.path.join(REPO_ROOT, "AGENTS.md")

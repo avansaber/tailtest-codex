@@ -87,6 +87,7 @@ def detect_recurring_failures(history: list[dict]) -> list[str]:
     Only counts distinct session_ids to avoid counting retries within a session.
     """
     from collections import defaultdict
+
     failure_sessions: dict[str, set] = defaultdict(set)
 
     for entry in history:
@@ -97,7 +98,8 @@ def detect_recurring_failures(history: list[dict]) -> list[str]:
                 failure_sessions[file_path].add(session_id)
 
     return [
-        f for f, sessions in failure_sessions.items()
+        f
+        for f, sessions in failure_sessions.items()
         if len(sessions) >= _RECURRENCE_THRESHOLD
     ]
 
@@ -129,7 +131,8 @@ def append_session_to_history(
 def get_recent_failures(history: list[dict], max_entries: int = 5) -> list[dict]:
     """A3: Return the most recent failure entries for startup context injection."""
     failures = [
-        e for e in history
+        e
+        for e in history
         if e.get("status") in ("unresolved", "deferred", "regression", "recurring")
         or e.get("classification") in ("regression", "recurring")
     ]
