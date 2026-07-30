@@ -133,6 +133,8 @@ Quality layer and cross-session memory. 317 tests.
 
 ## [Unreleased]
 
+- Stop now honors a current-user standalone `/tailtest defer` command and explicit no-more-tools boundary only after queued work is persisted and revalidated. Deferred work remains queued and blocks again on the next user turn. Directive detection is limited to the current user message from a Codex-owned transcript or supported event field; embedded examples, assistant/tool output, and untrusted transcript paths fail closed.
+
 ## [4.0.0] -- 2026-04-18
 
 Initial Codex CLI port. SessionStart hook for project orientation and AGENTS.md injection.

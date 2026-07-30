@@ -65,7 +65,7 @@ The `codex_hooks` key (used in older docs) is still accepted as a deprecated ali
 
 1. `SessionStart` hook scans for runners and injects `AGENTS.md`
 2. `PostToolUse` hook fires after every `apply_patch` or shell-style tool call: parses the patch (or sweeps mtimes when the payload doesn't surface paths), queues qualified source files, and surfaces them to the agent as mid-turn context
-3. `Stop` hook sweeps any leftovers at end of turn and prompts the agent to write tests before continuing
+3. `Stop` hook sweeps any leftovers at end of turn and prompts the agent to write tests before continuing. A current-user `/tailtest defer` command or explicit no-more-tools boundary may end the turn only after the queued work is safely persisted; it resumes on the next user turn.
 
 ---
 
