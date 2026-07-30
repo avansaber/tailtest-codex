@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -87,3 +88,54 @@ def test_initializer_materializes_absolute_project_hook_commands(tmp_path):
                 match = re.search(r'"([^"\n]+\.py)"', handler["commandWindows"])
                 assert match
                 assert Path(match.group(1)).is_file()
+
+
+def test_initializer_preserves_conflicting_hooks_as_sidecar(tmp_path):
+    git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
+    bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
+    if not bash or (os.name == "nt" and "system32" in bash.lower()):
+        pytest.skip("bash is unavailable")
+
+    existing = tmp_path / ".codex" / "hooks.json"
+    existing.parent.mkdir()
+    existing.write_text('{"hooks":{"Stop":[]}}', encoding="utf-8")
+
+    result = subprocess.run(
+        [bash, str(PLUGIN_ROOT / "scripts" / "init.sh")],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert existing.read_text(encoding="utf-8") == '{"hooks":{"Stop":[]}}'
+    sidecar = existing.with_name("hooks.json.tailtest")
+    assert sidecar.is_file()
+    assert "PLUGIN_ROOT" not in sidecar.read_text(encoding="utf-8")
+
+
+def test_initializer_fails_cleanly_when_python_is_unavailable(tmp_path):
+    git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
+    bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
+    if not bash or (os.name == "nt" and "system32" in bash.lower()):
+        pytest.skip("bash is unavailable")
+
+    fake_bin = tmp_path / "no-python-bin"
+    fake_bin.mkdir()
+    for name in ("python", "python3"):
+        fake_python = fake_bin / name
+        fake_python.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        fake_python.chmod(fake_python.stat().st_mode | stat.S_IEXEC)
+    env = os.environ.copy()
+    env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+
+    result = subprocess.run(
+        [bash, str(PLUGIN_ROOT / "scripts" / "init.sh")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Python is required" in result.stdout

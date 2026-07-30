@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import ntpath
 import os
 import subprocess
 import time
@@ -29,8 +30,10 @@ def qualify_pending_path(project_root: str, value: object) -> str | None:
     path = _bounded_string(value)
     if path is None or "\x00" in path:
         return None
+    path = path.replace("\\", "/")
     drive, _ = os.path.splitdrive(path)
-    if drive or os.path.isabs(path):
+    windows_drive, _ = ntpath.splitdrive(path)
+    if drive or windows_drive or os.path.isabs(path):
         return None
 
     root_real = os.path.realpath(project_root)
@@ -72,6 +75,16 @@ def _bounded_string_list(raw: object) -> list[str]:
     return [item for item in raw[:MAX_STATE_ITEMS] if _bounded_string(item) is not None]
 
 
+def _validated_path_list(project_root: str, raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return [
+        path
+        for value in raw[:MAX_STATE_ITEMS]
+        if (path := qualify_pending_path(project_root, value)) is not None
+    ]
+
+
 def _bounded_string_map(raw: object) -> dict[str, str]:
     if not isinstance(raw, dict):
         return {}
@@ -81,6 +94,19 @@ def _bounded_string_map(raw: object) -> dict[str, str]:
         safe_value = _bounded_string(value)
         if safe_key is not None and safe_value is not None:
             valid[safe_key] = safe_value
+    return valid
+
+
+def _validated_path_map(project_root: str, raw: object) -> dict[str, str]:
+    """Keep only project-contained source-to-test mappings."""
+    if not isinstance(raw, dict):
+        return {}
+    valid = {}
+    for key, value in list(raw.items())[:MAX_STATE_ITEMS]:
+        source_path = qualify_pending_path(project_root, key)
+        test_path = qualify_pending_path(project_root, value)
+        if source_path is not None and test_path is not None:
+            valid[source_path] = test_path
     return valid
 
 
@@ -116,6 +142,17 @@ def _validated_fix_attempts(raw: object) -> dict[str, int]:
     return valid
 
 
+def _validated_path_fix_attempts(project_root: str, raw: object) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    valid = {}
+    for key, value in list(raw.items())[:MAX_STATE_ITEMS]:
+        path = qualify_pending_path(project_root, key)
+        if path is not None and isinstance(value, int) and not isinstance(value, bool):
+            valid[path] = min(max(value, 0), 3)
+    return valid
+
+
 def _finite_number(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -137,10 +174,46 @@ def _validated_numeric_map(raw: object) -> dict[str, int | float]:
     return valid
 
 
+def _validated_path_numeric_map(
+    project_root: str, raw: object
+) -> dict[str, int | float]:
+    if not isinstance(raw, dict):
+        return {}
+    valid = {}
+    for key, value in list(raw.items())[:MAX_STATE_ITEMS]:
+        path = qualify_pending_path(project_root, key)
+        if path is not None and _finite_number(value) is not None:
+            valid[path] = value
+    return valid
+
+
 def _validated_dict_list(raw: object) -> list[dict]:
     if not isinstance(raw, list):
         return []
     return [dict(item) for item in raw[:MAX_STATE_ITEMS] if isinstance(item, dict)]
+
+
+def _validated_file_records(project_root: str, raw: object) -> list[dict]:
+    """Retain bounded records only when their consumed file path is safe."""
+    if not isinstance(raw, list):
+        return []
+    valid = []
+    for item in raw[:MAX_STATE_ITEMS]:
+        if not isinstance(item, dict):
+            continue
+        file_path = qualify_pending_path(project_root, item.get("file"))
+        if file_path is None:
+            continue
+        record = {"file": file_path}
+        for key in ("reason", "status", "session_id", "timestamp", "classification"):
+            value = _bounded_string(item.get(key))
+            if value is not None:
+                record[key] = value
+        attempts = item.get("attempts")
+        if isinstance(attempts, int) and not isinstance(attempts, bool):
+            record["attempts"] = min(max(attempts, 0), 3)
+        valid.append(record)
+    return valid
 
 
 def validate_session_state(project_root: str, raw: object) -> dict:
@@ -152,6 +225,7 @@ def validate_session_state(project_root: str, raw: object) -> dict:
     if not isinstance(raw, dict):
         return {}
     session = dict(raw)
+    session["session_id"] = _bounded_string(raw.get("session_id"), 128) or ""
     session["pending_files"] = validate_pending_files(
         project_root, raw.get("pending_files", [])
     )
@@ -163,17 +237,27 @@ def validate_session_state(project_root: str, raw: object) -> dict:
     session["paused"] = (
         raw.get("paused") if isinstance(raw.get("paused"), bool) else False
     )
-    session["touched_files"] = _bounded_string_list(raw.get("touched_files", []))
-    session["deferred_failures"] = _validated_dict_list(
-        raw.get("deferred_failures", [])
+    session["touched_files"] = _validated_path_list(
+        project_root, raw.get("touched_files", [])
     )
-    session["generated_tests"] = _bounded_string_map(raw.get("generated_tests", {}))
-    session["fix_attempts"] = _validated_fix_attempts(raw.get("fix_attempts", {}))
-    session["complexity_scores"] = _validated_numeric_map(
-        raw.get("complexity_scores", {})
+    session["deferred_failures"] = _validated_file_records(
+        project_root, raw.get("deferred_failures", [])
     )
-    session["last_failures"] = _validated_dict_list(raw.get("last_failures", []))
-    session["scenario_log"] = _validated_dict_list(raw.get("scenario_log", []))
+    session["generated_tests"] = _validated_path_map(
+        project_root, raw.get("generated_tests", {})
+    )
+    session["fix_attempts"] = _validated_path_fix_attempts(
+        project_root, raw.get("fix_attempts", {})
+    )
+    session["complexity_scores"] = _validated_path_numeric_map(
+        project_root, raw.get("complexity_scores", {})
+    )
+    session["last_failures"] = _validated_file_records(
+        project_root, raw.get("last_failures", [])
+    )
+    session["scenario_log"] = _validated_file_records(
+        project_root, raw.get("scenario_log", [])
+    )
     turn_start = _finite_number(raw.get("turn_start_mtime", 0.0))
     session["turn_start_mtime"] = turn_start if turn_start is not None else 0.0
     post_tool = _finite_number(

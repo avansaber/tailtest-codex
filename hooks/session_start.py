@@ -43,6 +43,17 @@ from hooks.lib.session import (
 )
 
 
+def _has_usable_restored_session(session: dict) -> bool:
+    """Return whether validation retained session identity or useful state."""
+    return bool(
+        session.get("session_id")
+        or session.get("pending_files")
+        or session.get("generated_tests")
+        or session.get("fix_attempts")
+        or session.get("deferred_failures")
+    )
+
+
 def main() -> None:
     try:
         raw = sys.stdin.read()
@@ -75,7 +86,9 @@ def main() -> None:
         except (json.JSONDecodeError, OSError):
             pass
 
-    if source == "compact" or (source == "resume" and existing_session):
+    if source == "compact" or (
+        source == "resume" and _has_usable_restored_session(existing_session)
+    ):
         session = existing_session
 
         if session:

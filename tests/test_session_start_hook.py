@@ -126,6 +126,74 @@ def test_resume_preserves_valid_state_and_rebases_watermarks(
     assert "src/app.py" in output["hookSpecificOutput"]["additionalContext"]
 
 
+def test_resume_with_no_usable_validated_session_falls_back_to_startup(
+    tmp_path, monkeypatch, capsys
+):
+    session_path = tmp_path / ".tailtest" / "session.json"
+    session_path.parent.mkdir()
+    session_path.write_text(
+        json.dumps(
+            {
+                "session_id": ["wrong type"],
+                "pending_files": "wrong type",
+                "generated_tests": {"../../outside.py": "tests/test_outside.py"},
+                "runners": {"python": []},
+            }
+        )
+    )
+
+    output = _run_session_start(
+        tmp_path, monkeypatch, capsys, {"source": "resume", "cwd": str(tmp_path)}
+    )
+
+    context = output["hookSpecificOutput"]["additionalContext"]
+    assert "session started" in context
+    assert "session resumed" not in context
+
+
+def test_resume_drops_unsafe_path_maps_and_malformed_file_records(
+    tmp_path, monkeypatch, capsys
+):
+    session = _base_session(str(tmp_path), time.time() - 300)
+    session["generated_tests"] = {
+        "src/valid.py": "tests/test_valid.py",
+        "../../outside.py": "tests/test_outside.py",
+        "src/other.py": "C:\\absolute.py",
+    }
+    session["fix_attempts"] = {"src/valid.py": 2, "../outside.py": 3}
+    session["complexity_scores"] = {"src/valid.py": 1.5, "../outside.py": 2.0}
+    session["deferred_failures"] = [
+        {"file": "src/valid.py", "reason": "waiting"},
+        {"file": "../outside.py", "reason": "unsafe"},
+        {"reason": "missing path"},
+    ]
+    session["last_failures"] = [
+        {"file": "src/valid.py", "status": "fixed", "attempts": 1},
+        {"file": "C:\\absolute.py", "status": "fixed", "attempts": 1},
+    ]
+    session["scenario_log"] = [
+        {"file": "src/valid.py", "status": "passed", "attempts": 0},
+        {"file": "../../outside.py", "status": "passed", "attempts": 0},
+    ]
+    save_session(str(tmp_path), session)
+
+    _run_session_start(
+        tmp_path, monkeypatch, capsys, {"source": "resume", "cwd": str(tmp_path)}
+    )
+
+    saved = json.loads((tmp_path / ".tailtest" / "session.json").read_text())
+    assert saved["generated_tests"] == {"src/valid.py": "tests/test_valid.py"}
+    assert saved["fix_attempts"] == {"src/valid.py": 2}
+    assert saved["complexity_scores"] == {"src/valid.py": 1.5}
+    assert saved["deferred_failures"] == [{"file": "src/valid.py", "reason": "waiting"}]
+    assert saved["last_failures"] == [
+        {"file": "src/valid.py", "status": "fixed", "attempts": 1}
+    ]
+    assert saved["scenario_log"] == [
+        {"file": "src/valid.py", "status": "passed", "attempts": 0}
+    ]
+
+
 def test_resume_drops_unsafe_pending_entries_but_preserves_valid_siblings(
     tmp_path, monkeypatch, capsys
 ):
