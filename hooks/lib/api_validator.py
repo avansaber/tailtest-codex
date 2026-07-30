@@ -28,9 +28,10 @@ def extract_public_names(file_path: str) -> list[str]:
 
     names = []
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if not node.name.startswith("_"):
-                names.append(node.name)
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ) and not node.name.startswith("_"):
+            names.append(node.name)
     return names
 
 
@@ -53,11 +54,12 @@ def validate_file_importable(file_path: str, project_root: str) -> tuple[bool, s
 
     try:
         import importlib
+
         importlib.import_module(module_name)
         return True, ""
     except ImportError as e:
         return False, f"import error: {e}"
-    except Exception:
+    except Exception:  # noqa: BLE001 - imports may require arbitrary runtime setup
         # Module has side effects or requires runtime setup -- treat as ok
         return True, ""
     finally:
@@ -72,10 +74,11 @@ def is_api_validation_enabled(project_root: str) -> bool:
         return False
     try:
         import json
+
         with open(config_path) as fh:
             cfg = json.load(fh)
         return bool(cfg.get("api_validation", False))
-    except Exception:
+    except Exception:  # noqa: BLE001 - malformed optional configuration disables the feature
         return False
 
 

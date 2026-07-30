@@ -1,18 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+### Documentation and install reconciliation
+
+- Marketplace installation is now documented as the recommended current-Codex path: register `avansaber/tailtest-codex`, add `tailtest@avansaber-tailtest`, then start a new session and review/approve the bundled `SessionStart`, `PostToolUse`, and `Stop` hook commands. Current plugin-manifest hooks do not require a per-project `.codex/hooks.json`.
+- The direct-clone flow remains a manual fallback. `scripts/init.sh` writes absolute commands, is idempotent, and preserves a conflicting project hook file as `.codex/hooks.json.tailtest` for manual merge.
+- Runtime documentation now records the restricted PostToolUse event set and output envelope, trusted-instruction/untrusted-data boundary, and one-turn-only safe Stop deferral behavior.
+- Current branch validation evidence is Windows: 437 passed; WSL/Linux: 436 passed, 1 skipped. macOS was not rerun for this documentation update. This is not a release, upstream-merge, GitHub-check, or released-artifact claim.
+
 ## [4.9.1] -- 2026-05-26
 
 Plugin icon for the Codex marketplace display.
 
 - Added `assets/icon.svg` (512x512, rounded-square tile with the tailtest shield + checkmark mark, emerald on near-black). Reads cleanly at marketplace tile sizes (32px, 64px, 128px).
 - `.codex-plugin/plugin.json` now references the icon via `interface.composerIcon = "./assets/icon.svg"`. Per the Codex plugin manifest spec; renders in the Codex app composer / marketplace browser.
-- No behavioral changes. 400 tests still passing.
+- No behavioral changes.
 
 Triggered by `tailtest-codex#5` (thanks to `@internet-dot` for the report and the concrete instructions).
 
 ## [4.9.0] -- 2026-05-19
 
-PostToolUse migration. Per-edit feedback alongside the existing turn-end Stop sweep. 400 tests (was 380; +20 PostToolUse tests).
+PostToolUse migration. Per-edit feedback alongside the existing turn-end Stop sweep.
 
 **New `hooks/post_tool_use.py`:**
 - Fires after every file-mutating Codex tool call (`apply_patch`, `patch`, plus shell-style tools via mtime fallback).
@@ -33,7 +42,7 @@ PostToolUse migration. Per-edit feedback alongside the existing turn-end Stop sw
 
 ## [4.8.0] -- 2026-05-19
 
-Codex CLI parity refresh against Codex 0.129.0+. Docs + plugin manifest + marketplace structure. No detection / rule / hook code changes; 380 tests still passing.
+Codex CLI parity refresh against Codex 0.129.0+. Docs + plugin manifest + marketplace structure. No detection / rule / hook code changes.
 
 **Docs cleanup (Phase A):**
 - README and `tailtest.com/docs/codex` install sections no longer instruct users to set `[features].codex_hooks = true`. Hooks reached GA in Codex 0.129.0 (default-on); the legacy alias still works but emits a deprecation warning every session. Older-version subsection added that documents the post-deprecation `[features].hooks = true` flag for users pinned to pre-0.129.0 releases.
@@ -49,7 +58,7 @@ Codex CLI parity refresh against Codex 0.129.0+. Docs + plugin manifest + market
 
 ## [4.7.0] -- 2026-04-25
 
-Adversarial test mode (V13). 380 tests.
+Adversarial test mode (V13).
 
 **New depth tier `adversarial`:** alongside `simple` / `standard` / `thorough`, set `"depth": "adversarial"` in `.tailtest/config.json` to bias scenario generation toward adversarial categories. Generates 8-12 scenarios per file, nearly all probing breakage paths rather than confirming correctness.
 
@@ -71,11 +80,11 @@ Install helper + docs clarity. No code or detection changes.
 
 **Why:** live Codex TUI validation on 2026-04-23 surfaced that users following the previous docs could end up with scripts installed but hooks not firing, because the per-project `.codex/hooks.json` step was easy to miss. The init helper closes that gap; the manual path is still documented as a fallback.
 
-**Detection / rule / hook code unchanged from v4.5.0.** 348 tests still passing.
+**Detection / rule / hook code unchanged from v4.5.0.**
 
 ## [4.5.0] -- 2026-04-23
 
-C# / .NET language support. 348 tests.
+C# / .NET language support.
 
 **Detection:** New `detect_dotnet_runner` picks up projects with `*.csproj`, `*.sln`, or `global.json`. Runner is `dotnet test`. Enumerates test projects into `runners.csharp.test_projects` for per-source-file resolution at test-write time.
 
@@ -87,7 +96,7 @@ C# / .NET language support. 348 tests.
 
 ## [4.4.0] -- 2026-04-23
 
-Kotlin language support. 340 tests.
+Kotlin language support.
 
 **Kotlin baseline scenarios (R1):** Kotlin row added: `null`, empty collection, zero, negative, `Result.failure`.
 
@@ -97,7 +106,7 @@ Kotlin language support. 340 tests.
 
 ## [4.3.0] -- 2026-04-23
 
-NestJS and Flask framework support. 337 tests.
+NestJS and Flask framework support.
 
 **NestJS detection:** Projects with `@nestjs/core` in dependencies register as `framework: nestjs`. NestJS is checked before Next.js (more specific signal). Monorepos with different frameworks per package are detected correctly. R2 row + S-rules entry covers Test.createTestingModule, provider overrides, controller vs microservice variants.
 
@@ -107,7 +116,7 @@ NestJS and Flask framework support. 337 tests.
 
 ## [4.2.0] -- 2026-04-23
 
-Spring Boot R2 baseline + Bun test, Deno test, pytest-asyncio detection. 329 tests.
+Spring Boot R2 baseline + Bun test, Deno test, pytest-asyncio detection.
 
 **Spring Boot (R2 completion):** Spring Boot projects (Maven or Gradle with `spring-boot` referenced) now get auto-included baseline scenarios on top of the Java baseline: valid request returns 200, missing required field returns 400, unauthenticated request returns 401, controller slice test with `@WebMvcTest`, service dependency overridden via `@MockBean`. Detection and Scenario rules already shipped in v4.1.0; this completes the R2 framework template row.
 
@@ -121,7 +130,7 @@ Spring Boot R2 baseline + Bun test, Deno test, pytest-asyncio detection. 329 tes
 
 ## [4.1.0] -- 2026-04-20
 
-Quality layer and cross-session memory. 317 tests.
+Quality layer and cross-session memory.
 
 **Rule layer:** Fourteen rules now govern test generation -- requirement-first derivation, language-keyed baseline scenarios, flakiness ban list, AAA structure, one-behavior-per-test, plain-English names, no-internals rule, boundary-only mocking, framework templates (Django, FastAPI, Next.js), equivalence partitioning, pre-write API check, SCENARIO PLAN label, and failure classification (real bug / environment issue / test bug stated before asking to fix).
 
@@ -133,8 +142,10 @@ Quality layer and cross-session memory. 317 tests.
 
 ## [Unreleased]
 
+- Stop now honors a current-user standalone `/tailtest defer` command and explicit no-more-tools boundary only after queued work is persisted and revalidated. Deferred work remains queued and blocks again on the next user turn. Directive detection is limited to the current user message from a Codex-owned transcript or supported event field; embedded examples, assistant/tool output, and untrusted transcript paths fail closed.
+
 ## [4.0.0] -- 2026-04-18
 
 Initial Codex CLI port. SessionStart hook for project orientation and AGENTS.md injection.
 Stop hook with mtime-based file detection per agent turn. All 8 languages (Python,
-TypeScript, JavaScript, Go, Rust, Ruby, PHP, Java). Codex skill files. 288 tests.
+TypeScript, JavaScript, Go, Rust, Ruby, PHP, Java). Codex skill files.

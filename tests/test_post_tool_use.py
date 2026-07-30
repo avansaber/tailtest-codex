@@ -41,9 +41,7 @@ def _base_session(tmp_path, **kwargs) -> dict:
         "session_id": "test-session",
         "started_at": "2026-01-01T00:00:00Z",
         "project_root": str(tmp_path),
-        "runners": {
-            "python": {"command": "pytest", "test_location": "tests/"}
-        },
+        "runners": {"python": {"command": "pytest", "test_location": "tests/"}},
         "depth": "standard",
         "paused": False,
         "pending_files": [],
@@ -58,12 +56,13 @@ def _base_session(tmp_path, **kwargs) -> dict:
     return session
 
 
-def _run_hook(tmp_path, event: dict) -> tuple[int, dict]:
+def _run_hook(tmp_path, event: object) -> tuple[int, dict]:
     """Run the hook and return (exit_code, parsed_stdout_or_empty)."""
     result = subprocess.run(
         [sys.executable, POST_TOOL_HOOK_PATH],
         input=json.dumps(event),
         capture_output=True,
+        check=False,
         text=True,
         cwd=str(tmp_path),
     )
@@ -96,6 +95,25 @@ def _make_py(tmp_path, rel: str, content: str = "def f():\n    pass\n") -> str:
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     abs_path.write_text(content)
     return str(abs_path)
+
+
+def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"git unavailable or failed: {result.stderr}")
+    return result
+
+
+def _init_git_repo(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "tailtest@example.invalid")
+    _git(tmp_path, "config", "user.name", "Tailtest")
 
 
 # -- tool-name filter --------------------------------------------------------
@@ -169,7 +187,9 @@ def test_apply_patch_codex_envelope_extracts_path(tmp_path):
 def test_apply_patch_add_file_envelope(tmp_path):
     _write_session(tmp_path, _base_session(tmp_path))
     _make_py(tmp_path, "src/new.py")
-    patch = "*** Begin Patch\n*** Add File: src/new.py\n+def g(): return 1\n*** End Patch\n"
+    patch = (
+        "*** Begin Patch\n*** Add File: src/new.py\n+def g(): return 1\n*** End Patch\n"
+    )
     code, out = _run_hook(
         tmp_path,
         _event(tmp_path, tool_input={"patch": patch}),
@@ -189,6 +209,28 @@ def test_apply_patch_input_alias_field(tmp_path):
     )
     assert code == 0
     assert "src/alias.py" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_apply_patch_command_alias_extracts_path_despite_future_watermark(tmp_path):
+    """Codex puts apply_patch text in tool_input.command."""
+    _write_session(
+        tmp_path,
+        _base_session(tmp_path, post_tool_last_fire_mtime=time.time() + 3600),
+    )
+    _make_py(tmp_path, "src/command.py")
+    patch = "*** Begin Patch\n*** Update File: src/command.py\n@@\n*** End Patch\n"
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(tmp_path, tool_input={"command": patch}),
+    )
+
+    assert code == 0
+    assert "src/command.py" in out["hookSpecificOutput"]["additionalContext"]
+    assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert any(
+        p["path"] == "src/command.py" for p in _load_session(tmp_path)["pending_files"]
+    )
 
 
 def test_apply_patch_empty_payload_falls_back_to_sweep(tmp_path):
@@ -220,6 +262,106 @@ def test_shell_tool_uses_mtime_sweep(tmp_path):
     )
     assert code == 0
     assert "src/via_shell.py" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_canonical_bash_tool_uses_mtime_sweep(tmp_path):
+    """Codex reports shell and unified-exec hooks under the Bash tool name."""
+    session = _base_session(tmp_path)
+    session["turn_start_mtime"] = time.time() - 5
+    _write_session(tmp_path, session)
+    time.sleep(0.05)
+    _make_py(tmp_path, "src/via_bash.py")
+    code, out = _run_hook(
+        tmp_path,
+        _event(
+            tmp_path,
+            tool_name="Bash",
+            tool_input={"command": "python -c \"open('src/via_bash.py', 'w')\""},
+        ),
+    )
+    assert code == 0
+    assert "src/via_bash.py" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_bash_command_patch_like_text_does_not_parse_as_patch(tmp_path):
+    """Shell command text is untrusted command data, not a patch payload."""
+    _write_session(
+        tmp_path,
+        _base_session(tmp_path, post_tool_last_fire_mtime=time.time() + 3600),
+    )
+    _make_py(tmp_path, "src/not_changed.py")
+    patch_like_command = (
+        "*** Begin Patch\n*** Update File: src/not_changed.py\n@@\n*** End Patch\n"
+    )
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(
+            tmp_path,
+            tool_name="Bash",
+            tool_input={"command": patch_like_command},
+        ),
+    )
+
+    assert code == 0
+    assert out == {}
+    assert _load_session(tmp_path)["pending_files"] == []
+
+
+def test_shell_mtime_sweep_skips_clean_tracked_file_churn(tmp_path):
+    _init_git_repo(tmp_path)
+    src = tmp_path / "src" / "clean.py"
+    src.parent.mkdir()
+    src.write_text("def clean():\n    return 1\n")
+    _git(tmp_path, "add", "src/clean.py")
+    _git(tmp_path, "commit", "-m", "init")
+    baseline = time.time() - 5
+    os.utime(src, None)
+    session = _base_session(
+        tmp_path,
+        turn_start_mtime=baseline,
+        post_tool_last_fire_mtime=baseline,
+    )
+    _write_session(tmp_path, session)
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(tmp_path, tool_name="Bash", tool_input={"command": "git pull"}),
+    )
+
+    assert code == 0
+    assert out == {}
+    assert _load_session(tmp_path)["pending_files"] == []
+
+
+def test_shell_mtime_sweep_queues_dirty_tracked_file_as_legacy(tmp_path):
+    _init_git_repo(tmp_path)
+    src = tmp_path / "src" / "dirty.py"
+    src.parent.mkdir()
+    src.write_text("def dirty():\n    return 1\n")
+    _git(tmp_path, "add", "src/dirty.py")
+    _git(tmp_path, "commit", "-m", "init")
+    baseline = time.time()
+    time.sleep(0.05)
+    src.write_text("def dirty():\n    return 2\n")
+    session = _base_session(
+        tmp_path,
+        turn_start_mtime=baseline,
+        post_tool_last_fire_mtime=baseline,
+    )
+    _write_session(tmp_path, session)
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(tmp_path, tool_name="Bash", tool_input={"command": "python edit.py"}),
+    )
+
+    assert code == 0
+    assert "src/dirty.py" in out["hookSpecificOutput"]["additionalContext"]
+    assert '"status": "legacy-file"' in out["hookSpecificOutput"]["additionalContext"]
+    assert _load_session(tmp_path)["pending_files"] == [
+        {"path": "src/dirty.py", "language": "python", "status": "legacy-file"}
+    ]
 
 
 # -- session state handling -------------------------------------------------
@@ -354,10 +496,7 @@ def test_multi_file_patch_queues_all(tmp_path):
     _write_session(tmp_path, _base_session(tmp_path))
     _make_py(tmp_path, "src/a.py")
     _make_py(tmp_path, "src/b.py")
-    patch = (
-        "diff --git a/src/a.py b/src/a.py\n"
-        "diff --git a/src/b.py b/src/b.py\n"
-    )
+    patch = "diff --git a/src/a.py b/src/a.py\ndiff --git a/src/b.py b/src/b.py\n"
     code, out = _run_hook(
         tmp_path,
         _event(tmp_path, tool_input={"patch": patch}),
@@ -366,6 +505,7 @@ def test_multi_file_patch_queues_all(tmp_path):
     note = out["hookSpecificOutput"]["additionalContext"]
     assert "src/a.py" in note
     assert "src/b.py" in note
+    assert '"status": "new-file"' in note
     assert "queued 2 file(s)" in note
     session = _load_session(tmp_path)
     paths = sorted(p["path"] for p in session["pending_files"])
@@ -386,6 +526,7 @@ def test_output_uses_hook_specific_output_shape(tmp_path):
     )
     assert code == 0
     assert "hookSpecificOutput" in out
+    assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
     assert "additionalContext" in out["hookSpecificOutput"]
     # Must NOT be a blocking decision; mid-turn surfacing is non-blocking.
     assert "decision" not in out
@@ -409,8 +550,26 @@ def test_malformed_event_exits_silent(tmp_path):
         [sys.executable, POST_TOOL_HOOK_PATH],
         input="not json {{{",
         capture_output=True,
+        check=False,
         text=True,
         cwd=str(tmp_path),
     )
     assert result.returncode == 0
     assert result.stdout.strip() == ""
+
+
+@pytest.mark.parametrize("payload", [[], None, "unexpected scalar"])
+def test_non_mapping_event_payload_exits_silent(tmp_path, payload):
+    code, out = _run_hook(tmp_path, payload)
+
+    assert code == 0
+    assert out == {}
+
+
+def test_non_mapping_tool_input_exits_silent(tmp_path):
+    _write_session(tmp_path, _base_session(tmp_path))
+
+    code, out = _run_hook(tmp_path, {"tool_name": "Edit", "tool_input": []})
+
+    assert code == 0
+    assert out == {}
