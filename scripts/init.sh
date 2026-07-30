@@ -17,8 +17,91 @@
 
 set -e
 
-PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_DIR="$(pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]//\\//}"
+SCRIPT_DIR="${SCRIPT_PATH%/*}"
+[ "$SCRIPT_DIR" = "$SCRIPT_PATH" ] && SCRIPT_DIR="."
+PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+PROJECT_DIR="$(pwd -P)"
+
+# Resolve helpers from an absolute PATH entry outside the project before
+# executing them. Initializers commonly run from untrusted project roots, so
+# relative PATH entries (including the current directory) and project-local
+# shims must not be eligible to run.
+find_path_executable() {
+  local executable="$1"
+  local symlink_policy="${2:-allow_symlinks}"
+  local entry canonical_entry candidate candidate_name
+  local original_ifs="$IFS"
+  local candidate_names=("$executable" "${executable}.exe" "${executable}.com" "${executable}.bat" "${executable}.cmd")
+
+  IFS=:
+  for entry in $PATH; do
+    [ -n "$entry" ] || continue
+    case "$entry" in
+      /*) ;;
+      *) continue ;;
+    esac
+
+    canonical_entry="$(cd -P -- "$entry" 2>/dev/null && pwd -P)" || continue
+    case "$canonical_entry" in
+      "$PROJECT_DIR"|"$PROJECT_DIR"/*) continue ;;
+    esac
+
+    for candidate_name in "${candidate_names[@]}"; do
+      candidate="$canonical_entry/$candidate_name"
+      if [ "$symlink_policy" = "reject_symlinks" ] && [ -L "$candidate" ]; then
+        continue
+      fi
+      if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+        printf '%s\n' "$candidate"
+        IFS="$original_ifs"
+        return 0
+      fi
+    done
+  done
+  IFS="$original_ifs"
+  return 1
+}
+
+if ! READLINK_BIN="$(find_path_executable readlink reject_symlinks)"; then
+  echo "error: unable to resolve a trusted readlink executable"
+  exit 1
+fi
+
+resolve_trusted_executable() {
+  local executable="$1"
+  local candidate canonical_candidate
+
+  while IFS= read -r candidate; do
+    canonical_candidate="$("$READLINK_BIN" -f -- "$candidate" 2>/dev/null)" || continue
+    case "$canonical_candidate" in
+      /*) ;;
+      *) continue ;;
+    esac
+    case "$canonical_candidate" in
+      "$PROJECT_DIR"|"$PROJECT_DIR"/*) continue ;;
+    esac
+    if [ -f "$canonical_candidate" ] && [ -x "$canonical_candidate" ]; then
+      printf '%s\n' "$canonical_candidate"
+      return 0
+    fi
+  done < <(find_path_executable "$executable")
+  return 1
+}
+
+for helper in mkdir mktemp rm cmp cp grep; do
+  if ! resolve_trusted_executable "$helper" >/dev/null; then
+    echo "error: unable to resolve a trusted $helper executable"
+    exit 1
+  fi
+done
+
+MKDIR_BIN="$(resolve_trusted_executable mkdir)"
+MKTEMP_BIN="$(resolve_trusted_executable mktemp)"
+RM_BIN="$(resolve_trusted_executable rm)"
+CMP_BIN="$(resolve_trusted_executable cmp)"
+CP_BIN="$(resolve_trusted_executable cp)"
+GREP_BIN="$(resolve_trusted_executable grep)"
 
 if [ ! -f "$PLUGIN_DIR/hooks/hooks.json" ]; then
   echo "error: plugin hooks.json not found at $PLUGIN_DIR/hooks/hooks.json"
@@ -26,24 +109,27 @@ if [ ! -f "$PLUGIN_DIR/hooks/hooks.json" ]; then
   exit 1
 fi
 
-mkdir -p "$PROJECT_DIR/.codex"
+"$MKDIR_BIN" -p "$PROJECT_DIR/.codex"
 
-if command -v python3 >/dev/null 2>&1 && python3 -c "import json" >/dev/null 2>&1; then
-  PYTHON_BIN="python3"
-elif command -v python >/dev/null 2>&1 && python -c "import json" >/dev/null 2>&1; then
-  PYTHON_BIN="python"
+if PYTHON_BIN="$(resolve_trusted_executable python3)" && "$PYTHON_BIN" -c "import json" >/dev/null 2>&1; then
+  :
+elif PYTHON_BIN="$(resolve_trusted_executable python)" && "$PYTHON_BIN" -c "import json" >/dev/null 2>&1; then
+  :
 else
   echo "error: Python is required to initialize tailtest hooks"
   exit 1
 fi
 
 PLUGIN_DIR_NATIVE="$PLUGIN_DIR"
-if command -v cygpath >/dev/null 2>&1; then
-  PLUGIN_DIR_NATIVE="$(cygpath -w "$PLUGIN_DIR")"
+if CYGPATH_BIN="$(resolve_trusted_executable cygpath)"; then
+  PLUGIN_DIR_NATIVE="$("$CYGPATH_BIN" -w "$PLUGIN_DIR")"
 fi
 
-DESIRED_HOOKS="$(mktemp "${TMPDIR:-/tmp}/tailtest-hooks.XXXXXX.json")"
-trap 'rm -f "$DESIRED_HOOKS"' EXIT
+DESIRED_HOOKS="$("$MKTEMP_BIN" "${TMPDIR:-/tmp}/tailtest-hooks.XXXXXX.json")"
+cleanup() {
+  "$RM_BIN" -f "$DESIRED_HOOKS"
+}
+trap cleanup EXIT
 
 "$PYTHON_BIN" - "$PLUGIN_DIR_NATIVE" "$PLUGIN_DIR/hooks/hooks.json" "$DESIRED_HOOKS" <<'PY'
 import json
@@ -78,16 +164,16 @@ with open(output_path, "w", encoding="utf-8", newline="\n") as output:
 PY
 
 if [ -e "$PROJECT_DIR/.codex/hooks.json" ]; then
-  if cmp -s "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json"; then
+  if "$CMP_BIN" -s "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json"; then
     echo "tailtest: .codex/hooks.json already matches plugin config, nothing to do"
   else
     echo "tailtest: .codex/hooks.json already exists with different content"
     echo "          writing plugin config to .codex/hooks.json.tailtest instead"
     echo "          merge the SessionStart, PostToolUse, and Stop entries manually"
-    cp "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json.tailtest"
+    "$CP_BIN" "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json.tailtest"
   fi
 else
-  cp "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json"
+  "$CP_BIN" "$DESIRED_HOOKS" "$PROJECT_DIR/.codex/hooks.json"
   echo "tailtest: wrote .codex/hooks.json -> $PLUGIN_DIR/hooks/"
 fi
 
@@ -101,13 +187,13 @@ fi
 # is on an older Codex that needs the flag turned on explicitly.
 GLOBAL_CONFIG="$HOME/.codex/config.toml"
 if [ -f "$GLOBAL_CONFIG" ]; then
-  if grep -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*true' "$GLOBAL_CONFIG"; then
+  if "$GREP_BIN" -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*true' "$GLOBAL_CONFIG"; then
     echo ""
     echo "note: ~/.codex/config.toml uses the deprecated [features].codex_hooks key."
     echo "      Codex 0.129.0+ accepts it as an alias but emits a deprecation warning"
     echo "      on every session start. Rename it to [features].hooks when convenient."
     echo ""
-  elif grep -qE '^[[:space:]]*hooks[[:space:]]*=[[:space:]]*true' "$GLOBAL_CONFIG"; then
+  elif "$GREP_BIN" -qE '^[[:space:]]*hooks[[:space:]]*=[[:space:]]*true' "$GLOBAL_CONFIG"; then
     : # explicit hooks = true, all good
   else
     : # Codex 0.129.0+ defaults to on; nothing to warn about.

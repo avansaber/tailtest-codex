@@ -144,6 +144,106 @@ def test_initializer_materializes_absolute_project_hook_commands(tmp_path):
         assert marker not in hook.stdout
 
 
+def test_initializer_does_not_execute_project_path_helpers(tmp_path):
+    git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
+    bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
+    if not bash or (
+        os.name == "nt"
+        and Path(bash).name.lower() == "bash.exe"
+        and "system32" in bash.lower()
+    ):
+        pytest.skip("bash is unavailable")
+
+    marker = tmp_path / "project-path-helper-ran"
+    for name in (
+        "dirname",
+        "python3",
+        "python",
+        "cygpath",
+        "readlink",
+        "mkdir",
+        "mktemp",
+        "rm",
+        "cmp",
+        "cp",
+        "grep",
+    ):
+        helper = tmp_path / name
+        helper.write_text(
+            "#!/bin/sh\n"
+            f"printf '%s\\n' 'fake-{name}-ran' >> \"$TAILTEST_INIT_MARKER\"\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        helper.chmod(helper.stat().st_mode | stat.S_IEXEC)
+
+    env = os.environ.copy()
+    env["PATH"] = str(tmp_path) + os.pathsep + env.get("PATH", "")
+    env["TAILTEST_INIT_MARKER"] = str(marker)
+
+    result = subprocess.run(
+        [bash, str(PLUGIN_ROOT / "scripts" / "init.sh")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert not marker.exists(), marker.read_text(encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+    installed = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
+    assert "SessionStart" in installed["hooks"]
+
+
+def test_initializer_does_not_execute_project_symlinked_readlink_helper(
+    tmp_path, tmp_path_factory
+):
+    git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
+    bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
+    if not bash or (
+        os.name == "nt"
+        and Path(bash).name.lower() == "bash.exe"
+        and "system32" in bash.lower()
+    ):
+        pytest.skip("bash is unavailable")
+
+    marker = tmp_path / "project-readlink-helper-ran"
+    project_readlink = tmp_path / "readlink"
+    project_readlink.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' 'fake-readlink-ran' >> \"$TAILTEST_INIT_MARKER\"\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    project_readlink.chmod(project_readlink.stat().st_mode | stat.S_IEXEC)
+
+    outside_bin = tmp_path_factory.mktemp("outside-bin")
+    outside_readlink = outside_bin / "readlink"
+    try:
+        outside_readlink.symlink_to(project_readlink)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    env = os.environ.copy()
+    env["PATH"] = os.pathsep.join(
+        [str(outside_bin), str(tmp_path), env.get("PATH", "")]
+    )
+    env["TAILTEST_INIT_MARKER"] = str(marker)
+
+    result = subprocess.run(
+        [bash, str(PLUGIN_ROOT / "scripts" / "init.sh")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert not marker.exists(), marker.read_text(encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+    installed = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
+    assert "SessionStart" in installed["hooks"]
+
+
 def test_initializer_preserves_conflicting_hooks_as_sidecar(tmp_path):
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
     bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
@@ -172,7 +272,9 @@ def test_initializer_preserves_conflicting_hooks_as_sidecar(tmp_path):
     assert "PLUGIN_ROOT" not in sidecar.read_text(encoding="utf-8")
 
 
-def test_initializer_fails_cleanly_when_python_is_unavailable(tmp_path):
+def test_initializer_fails_cleanly_when_python_is_unavailable(
+    tmp_path, tmp_path_factory
+):
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
     bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
     if not bash or (
@@ -182,8 +284,7 @@ def test_initializer_fails_cleanly_when_python_is_unavailable(tmp_path):
     ):
         pytest.skip("bash is unavailable")
 
-    fake_bin = tmp_path / "no-python-bin"
-    fake_bin.mkdir()
+    fake_bin = tmp_path_factory.mktemp("no-python-bin")
     for name in ("python", "python3"):
         fake_python = fake_bin / name
         fake_python.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
