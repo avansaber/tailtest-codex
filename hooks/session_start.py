@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""tailtest SessionStart hook -- project orientation and AGENTS.md injection.
+"""tailtest SessionStart hook -- project orientation and instruction context.
 
 Fires on session startup, resume, and compact (post-compaction).
 
-startup / resume:
-  - Reads and injects AGENTS.md (plugin intelligence layer)
+startup:
+  - Reads compact trusted runtime instructions from the plugin
   - Scans project manifests to detect runners and test locations
   - Creates a fresh .tailtest/session.json (includes turn_start_mtime)
   - Emits project summary via hookSpecificOutput.additionalContext
 
-compact:
-  - Re-injects AGENTS.md so the model has instructions after compaction
+resume / compact:
+  - Preserves validated project-local session state
+  - Re-bases turn watermarks so later sweeps only see new edits
   - Re-emits session state summary from .tailtest/session.json
 
 Target: < 2 seconds for startup, < 1 second for compact.
@@ -28,12 +29,29 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hooks.lib.context import (
+    build_additional_context,
     build_compact_context,
     build_startup_context,
     read_agents_md,
 )
 from hooks.lib.ramp_up import _write_orphaned_report, is_first_session, ramp_up_scan
 from hooks.lib.runners import create_session, read_depth, scan_runners
+from hooks.lib.session import (
+    rebase_turn_timestamps,
+    save_session,
+    validate_session_state,
+)
+
+
+def _has_usable_restored_session(session: dict) -> bool:
+    """Return whether validation retained session identity or useful state."""
+    return bool(
+        session.get("session_id")
+        or session.get("pending_files")
+        or session.get("generated_tests")
+        or session.get("fix_attempts")
+        or session.get("deferred_failures")
+    )
 
 
 def main() -> None:
@@ -47,35 +65,37 @@ def main() -> None:
     source: str = event.get("source", event.get("event_type", "startup"))
     project_root: str = event.get("cwd", os.getcwd())
 
-    # Resolve plugin root: CLAUDE_PLUGIN_ROOT env var (Claude Code compat),
-    # CODEX_PLUGIN_ROOT env var, or parent directory of this file.
+    # Prefer Codex's plugin root, then compatibility variables and source fallback.
     plugin_root = (
-        os.environ.get("CODEX_PLUGIN_ROOT") or
-        os.environ.get("CLAUDE_PLUGIN_ROOT") or
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        os.environ.get("PLUGIN_ROOT")
+        or os.environ.get("CODEX_PLUGIN_ROOT")
+        or os.environ.get("CLAUDE_PLUGIN_ROOT")
+        or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
 
     agents_md = read_agents_md(plugin_root)
 
-    # Write AGENTS.md to project root so Codex reads it natively (silently).
-    # Only write if absent -- never overwrite a project's own AGENTS.md.
-    if agents_md:
-        project_agents_md = os.path.join(project_root, "AGENTS.md")
-        if not os.path.exists(project_agents_md):
-            try:
-                with open(project_agents_md, "w") as fh:
-                    fh.write(agents_md)
-            except OSError:
-                pass
+    session_path = os.path.join(project_root, ".tailtest", "session.json")
+    existing_session: dict = {}
+    if source in {"resume", "compact"} and os.path.exists(session_path):
+        try:
+            with open(session_path, encoding="utf-8") as handle:
+                existing_session = validate_session_state(
+                    project_root, json.load(handle)
+                )
+        except (json.JSONDecodeError, OSError):
+            pass
 
-    if source == "compact":
-        session_path = os.path.join(project_root, ".tailtest", "session.json")
-        session: dict = {}
-        if os.path.exists(session_path):
+    if source == "compact" or (
+        source == "resume" and _has_usable_restored_session(existing_session)
+    ):
+        session = existing_session
+
+        if session:
+            rebase_turn_timestamps(session)
             try:
-                with open(session_path) as fh:
-                    session = json.load(fh)
-            except (json.JSONDecodeError, OSError):
+                save_session(project_root, session)
+            except OSError:
                 pass
 
         runners = session.get("runners", {})
@@ -84,10 +104,15 @@ def main() -> None:
         fix_attempts = session.get("fix_attempts", {})
 
         context = build_compact_context(
-            project_root, runners, depth, pending_files, fix_attempts
+            project_root,
+            runners,
+            depth,
+            pending_files,
+            fix_attempts,
+            resume_source=source,
         )
     else:
-        # startup or resume -- full project orientation
+        # startup, or resume without usable state -- full project orientation
         _write_orphaned_report(project_root)
         runners = scan_runners(project_root)
         depth = read_depth(project_root)
@@ -103,25 +128,31 @@ def main() -> None:
             try:
                 ramp_up_scan(project_root, runners, session)
                 ramp_up_count = len(session.get("pending_files", []))
-            except Exception:
+            except Exception:  # noqa: BLE001 - ramp-up must not block startup
                 ramp_up_count = 0  # Never crash startup
 
         context = build_startup_context(
-            project_root, runners, depth,
+            project_root,
+            runners,
+            depth,
             ramp_up_count=ramp_up_count,
         )
+
+    context = build_additional_context(context, agents_md)
 
     if context:
         # Codex SessionStart: emit via hookSpecificOutput.additionalContext
         # (unlike Claude Code which uses plain stdout for SessionStart).
         # If this format does not inject, fall back to plain stdout as well.
-        output = json.dumps({
-            "suppressOutput": True,
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": context,
-            },
-        })
+        output = json.dumps(
+            {
+                "suppressOutput": True,
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": context,
+                },
+            }
+        )
         print(output)
 
 

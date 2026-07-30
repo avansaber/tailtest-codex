@@ -5,7 +5,6 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
-from typing import Optional
 
 from hooks.lib.runners import TEST_FILE_PATTERNS
 
@@ -23,7 +22,15 @@ def find_recent_test_files(
 ) -> list[str]:
     """Return up to max_files most-recently-modified test file paths (absolute)."""
     candidates: list[tuple[float, str]] = []
-    _skip_dirs = {"node_modules", ".venv", "venv", "__pycache__", "dist", "build", "vendor"}
+    _skip_dirs = {
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "dist",
+        "build",
+        "vendor",
+    }
 
     for language, runner in runners.items():
         patterns = TEST_FILE_PATTERNS.get(language, [])
@@ -61,7 +68,7 @@ def find_recent_test_files(
     return result
 
 
-def extract_style_snippet(file_path: str, max_lines: int = 30) -> Optional[str]:
+def extract_style_snippet(file_path: str, max_lines: int = 30) -> str | None:
     """Return the first max_lines lines of a test file as a stripped string."""
     try:
         with open(file_path, encoding="utf-8", errors="replace") as fh:
@@ -110,7 +117,7 @@ def detect_custom_helpers(snippets: list[str]) -> list[str]:
     return helpers[:5]
 
 
-def build_style_context(project_root: str, runners: dict) -> Optional[str]:
+def build_style_context(project_root: str, runners: dict) -> str | None:
     """Sample recent test files and return a style-context block, or None."""
     recent = find_recent_test_files(project_root, runners, max_files=3)
     if not recent:
