@@ -11,12 +11,23 @@ from __future__ import annotations
 
 import ast
 import os
-import re
 
 _SKIP_DIRS = {
-    "node_modules", ".venv", "venv", ".env", "env", "dist", "build",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".git", ".tailtest",
-    "migrations", "vendor", "target",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".env",
+    "env",
+    "dist",
+    "build",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".git",
+    ".tailtest",
+    "migrations",
+    "vendor",
+    "target",
 }
 _MAX_FILES = 500  # cap to keep the walk fast
 
@@ -38,9 +49,8 @@ def _imports_from_source(content: str) -> list[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imported.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.append(node.module)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.append(node.module)
     return imported
 
 
@@ -57,7 +67,9 @@ def find_importers(source_rel_path: str, project_root: str) -> list[str]:
     scanned = 0
 
     for root, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")
+        ]
         for filename in filenames:
             if not filename.endswith(".py"):
                 continue
@@ -101,8 +113,9 @@ def is_impact_tracing_enabled(project_root: str) -> bool:
         return False
     try:
         import json
+
         with open(config_path) as fh:
             cfg = json.load(fh)
         return bool(cfg.get("impact_tracing", False))
-    except Exception:
+    except Exception:  # noqa: BLE001 - malformed optional configuration disables the feature
         return False

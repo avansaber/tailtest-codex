@@ -41,13 +41,15 @@ def build_scenario_entries(session: dict) -> list[dict]:
         else:
             status = "fixed"
 
-        entries.append({
-            "file": source_path,
-            "status": status,
-            "attempts": attempts,
-            "session_id": session_id,
-            "timestamp": now,
-        })
+        entries.append(
+            {
+                "file": source_path,
+                "status": status,
+                "attempts": attempts,
+                "session_id": session_id,
+                "timestamp": now,
+            }
+        )
 
     return entries
 
@@ -63,7 +65,9 @@ def append_to_log(existing_log: list[dict], new_entries: list[dict]) -> list[dic
     return combined
 
 
-def get_file_history(scenario_log: list[dict], file_path: str, last_n: int = 10) -> list[dict]:
+def get_file_history(
+    scenario_log: list[dict], file_path: str, last_n: int = 10
+) -> list[dict]:
     """Return the last_n entries for a specific file path."""
     matches = [e for e in scenario_log if e.get("file") == file_path]
     return matches[-last_n:]
