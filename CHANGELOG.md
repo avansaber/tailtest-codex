@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Documentation and install reconciliation
+
+- Marketplace installation is now documented as the recommended current-Codex path: register `avansaber/tailtest-codex`, add `tailtest@avansaber-tailtest`, then start a new session and review/approve the bundled `SessionStart`, `PostToolUse`, and `Stop` hook commands. Current plugin-manifest hooks do not require a per-project `.codex/hooks.json`.
+- The direct-clone flow remains a manual fallback. `scripts/init.sh` writes absolute commands, is idempotent, and preserves a conflicting project hook file as `.codex/hooks.json.tailtest` for manual merge.
+- Runtime documentation now records the restricted PostToolUse event set and output envelope, trusted-instruction/untrusted-data boundary, and one-turn-only safe Stop deferral behavior.
+- Current branch validation evidence is Windows: 437 passed; WSL/Linux: 436 passed, 1 skipped. macOS was not rerun for this documentation update. This is not a release, upstream-merge, GitHub-check, or released-artifact claim.
+
 ## [4.9.1] -- 2026-05-26
 
 Plugin icon for the Codex marketplace display.

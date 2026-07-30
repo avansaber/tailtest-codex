@@ -1,9 +1,9 @@
 # tailtest-codex -- AI software testing for OpenAI Codex CLI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-400_passing-emerald)](https://github.com/avansaber/tailtest-codex)
-[![Version](https://img.shields.io/badge/version-4.9.1-blue)](https://github.com/avansaber/tailtest-codex/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS_%7C_Linux-lightgrey)](https://tailtest.com/platform/agent-edits/)
+[![Tests](https://img.shields.io/badge/tests-437_passing_(Windows)-emerald)](https://github.com/avansaber/tailtest-codex)
+[![Manifest version](https://img.shields.io/badge/manifest-4.9.1-blue)](.codex-plugin/plugin.json)
+[![Validation](https://img.shields.io/badge/validated-Windows_%7C_WSL%2FLinux-lightgrey)](https://github.com/avansaber/tailtest-codex)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-0.129.0%2B-purple)](https://developers.openai.com/codex)
 
 **tailtest-codex** is the open-source AI software testing layer for [OpenAI Codex CLI](https://developers.openai.com/codex). It runs inside the build loop: PostToolUse + Stop hooks fire after every `apply_patch` Codex makes, queue the changed files, generate scenarios via the R1-R15 rule layer, run them with your project's existing test runner, and surface failures back to Codex within the same turn. Hook-based. Deterministic. No prompting required.
@@ -16,37 +16,26 @@ Open source (MIT), no telemetry, no SaaS account. Same R1-R15 rule layer + adver
 
 ## Install
 
-Requires Codex CLI 0.129.0 or newer (hooks are stable and on by default in this range).
+For current Codex versions, the marketplace path is recommended:
 
 ```bash
-# One-time setup (any terminal):
-git clone https://github.com/avansaber/tailtest-codex ~/.codex/plugins/tailtest
+codex plugin marketplace add avansaber/tailtest-codex
+codex plugin add tailtest@avansaber-tailtest
+```
 
-# Per-project setup (run inside each project where you want tailtest active):
+Start a new Codex session and review/approve Tailtest's `SessionStart`, `PostToolUse`, and `Stop` hook commands when prompted. On current Codex, the plugin hook manifest activates these hooks; this path does **not** require a per-project `.codex/hooks.json`.
+
+### Direct clone (manual fallback)
+
+The direct-clone path remains available when you need a local checkout or manual hook setup:
+
+```bash
+git clone https://github.com/avansaber/tailtest-codex ~/.codex/plugins/tailtest
 cd <your-project>
 bash ~/.codex/plugins/tailtest/scripts/init.sh
 ```
 
-That's it. Start a `codex` session in the project and tailtest fires on every turn.
-
-The init script creates `.codex/hooks.json` in your project pointing at the tailtest hook scripts. It is idempotent (safe to re-run) and never overwrites an existing `hooks.json` with different content; it writes a `.codex/hooks.json.tailtest` sidecar instead for manual merging.
-
-### Marketplace install (alternative)
-
-The repo also ships as a Codex marketplace, so you can register it with one command instead of `git clone`:
-
-```bash
-codex plugin marketplace add avansaber/tailtest-codex
-```
-
-Then enable the plugin from inside a Codex session (the interactive `/plugins` menu) or by adding this entry to `~/.codex/config.toml`:
-
-```toml
-[plugins."tailtest@avansaber-tailtest"]
-enabled = true
-```
-
-You still need to run `bash ~/.codex/plugins/tailtest/scripts/init.sh` per project for hooks to fire, because Codex's `plugin_hooks` feature (which lets plugins register hooks automatically) is currently in development. Once that ships stable, the init step will go away. Until then, marketplace install just replaces the `git clone` step and is a forward-compat path.
+Run the initializer inside each target project. It writes absolute hook commands, is idempotent, and preserves a conflicting existing `.codex/hooks.json` by writing `.codex/hooks.json.tailtest` for manual merge.
 
 ### Older Codex CLI versions
 
@@ -63,9 +52,15 @@ The `codex_hooks` key (used in older docs) is still accepted as a deprecated ali
 
 ## How it works
 
-1. `SessionStart` hook scans for runners and injects `AGENTS.md`
-2. `PostToolUse` hook fires after every `apply_patch` or shell-style tool call: parses the patch (or sweeps mtimes when the payload doesn't surface paths), queues qualified source files, and surfaces them to the agent as mid-turn context
-3. `Stop` hook sweeps any leftovers at end of turn and prompts the agent to write tests before continuing. A current-user `/tailtest defer` command or explicit no-more-tools boundary may end the turn only after the queued work is safely persisted; it resumes on the next user turn.
+1. `SessionStart` scans for runners and returns compact trusted runtime instructions as hook context. It never writes a persistent project `AGENTS.md`.
+2. `PostToolUse` is registered only for canonical Codex `Bash`, `apply_patch`, `Edit`, and `Write` events. Patch-like payloads are parsed only for patch tools, including current `tool_input.command` payloads; shell commands use a bounded mtime/Git fallback. Its non-blocking response contains `hookSpecificOutput.hookEventName: "PostToolUse"` and `additionalContext`.
+3. `Stop` blocks when validated pending work remains and safely persists the queue. It defers only for a current-user standalone `/tailtest defer` or an explicit no-more-tools boundary; `/tailtest defer` lasts one turn and queued work blocks again on the next user turn.
+
+Filenames, paths, transcripts, hook payloads, and session JSON are untrusted data, not instructions. In particular, `/tailtest defer` text inside fenced or quoted content, assistant/tool output, filenames, transcripts, or other repository-derived data is never a directive.
+
+### Validation status
+
+At this branch revision, `python -m pytest -q` passed with 437 tests on Windows. The WSL/Linux run passed with 436 tests and 1 skipped. macOS was not rerun for this documentation update. This is branch validation evidence, not a claim of a published release, merged upstream state, green GitHub checks, or a freshly released install artifact.
 
 ---
 
