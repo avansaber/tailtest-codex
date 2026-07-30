@@ -254,12 +254,70 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
     ):
         pytest.skip("bash is unavailable")
 
-    outside_bin = tmp_path_factory.mktemp("outside-bin")
-    fake_readlink = outside_bin / "readlink"
-    fake_readlink.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
-    fake_readlink.chmod(fake_readlink.stat().st_mode | stat.S_IEXEC)
+    readlink_lookup = subprocess.run(
+        [bash, "-lc", "command -v readlink"],
+        capture_output=True,
+        text=True,
+    )
+    if readlink_lookup.returncode != 0 or not readlink_lookup.stdout.strip():
+        pytest.skip("readlink is unavailable")
+
+    python_lookup = subprocess.run(
+        [bash, "-lc", "command -v python3 || command -v python"],
+        capture_output=True,
+        text=True,
+    )
+    if python_lookup.returncode != 0 or not python_lookup.stdout.strip():
+        pytest.skip("python is unavailable to bash")
 
     marker = tmp_path / "project-path-helper-ran"
+    readlink_marker = tmp_path / "readlink-used"
+    outside_bin = tmp_path_factory.mktemp("outside-bin")
+    outside_bin_lookup = subprocess.run(
+        [bash, "-lc", 'cygpath -u "$TAILTEST_OUTSIDE_BIN"'],
+        env={**os.environ, "TAILTEST_OUTSIDE_BIN": str(outside_bin)},
+        capture_output=True,
+        text=True,
+    )
+    if outside_bin_lookup.returncode != 0 or not outside_bin_lookup.stdout.strip():
+        pytest.skip("cygpath is unavailable to bash")
+
+    outside_python_bash = f"{outside_bin_lookup.stdout.strip()}/python3"
+    link_result = subprocess.run(
+        [bash, "-lc", 'ln -s "$TAILTEST_PYTHON" "$TAILTEST_LINK"'],
+        env={
+            **os.environ,
+            "TAILTEST_PYTHON": python_lookup.stdout.strip(),
+            "TAILTEST_LINK": outside_python_bash,
+        },
+        capture_output=True,
+        text=True,
+    )
+    if link_result.returncode != 0:
+        pytest.skip(f"bash symlink creation unavailable: {link_result.stderr}")
+
+    link_probe = subprocess.run(
+        [bash, "-lc", '[ -L "$TAILTEST_LINK" ]'],
+        env={**os.environ, "TAILTEST_LINK": outside_python_bash},
+        capture_output=True,
+        text=True,
+    )
+    if link_probe.returncode != 0:
+        pytest.skip("bash-visible symlink creation unavailable")
+
+    fake_readlink = outside_bin / "readlink"
+    fake_readlink.write_text(
+        "#!/bin/sh\n"
+        'if [ "${1:-}" = "-f" ]; then\n'
+        "  printf '%s\\n' 'unexpected-readlink-f' >> \"$TAILTEST_READLINK_MARKER\"\n"
+        "  exit 1\n"
+        "fi\n"
+        "printf '%s\\n' 'plain-readlink-used' >> \"$TAILTEST_READLINK_MARKER\"\n"
+        'exec "$TAILTEST_TEST_READLINK_BIN" "$@"\n',
+        encoding="utf-8",
+    )
+    fake_readlink.chmod(fake_readlink.stat().st_mode | stat.S_IEXEC)
+
     for name in ("python3", "python", "cygpath"):
         helper = tmp_path / name
         helper.write_text(
@@ -275,6 +333,8 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
         [str(outside_bin), str(tmp_path), env.get("PATH", "")]
     )
     env["TAILTEST_INIT_MARKER"] = str(marker)
+    env["TAILTEST_READLINK_MARKER"] = str(readlink_marker)
+    env["TAILTEST_TEST_READLINK_BIN"] = readlink_lookup.stdout.strip()
 
     result = subprocess.run(
         [bash, str(PLUGIN_ROOT / "scripts" / "init.sh")],
@@ -286,6 +346,9 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
 
     assert not marker.exists(), marker.read_text(encoding="utf-8")
     assert result.returncode == 0, result.stderr
+    readlink_calls = readlink_marker.read_text(encoding="utf-8")
+    assert "plain-readlink-used" in readlink_calls
+    assert "unexpected-readlink-f" not in readlink_calls
     installed = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
     assert "SessionStart" in installed["hooks"]
 

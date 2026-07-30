@@ -63,44 +63,49 @@ find_path_executable() {
   return 1
 }
 
-resolve_gnu_readlink() {
+resolve_readlink() {
   local executable candidate
 
   for executable in readlink greadlink; do
     while IFS= read -r candidate; do
-      if "$candidate" -f / >/dev/null 2>&1; then
-        printf '%s\n' "$candidate"
-        return 0
-      fi
+      printf '%s\n' "$candidate"
+      return 0
     done < <(find_path_executable "$executable" reject_symlinks)
   done
   return 1
 }
 
-if ! READLINK_BIN="$(resolve_gnu_readlink)"; then
+if ! READLINK_BIN="$(resolve_readlink)"; then
   READLINK_BIN=""
 fi
 
 canonicalize_executable_candidate() {
   local candidate="$1"
-  local candidate_dir candidate_base canonical_dir
+  local candidate_dir candidate_base canonical_dir canonical_candidate link_target
+  local depth=0
 
-  if [ -n "$READLINK_BIN" ]; then
-    "$READLINK_BIN" -f -- "$candidate" 2>/dev/null
-    return $?
-  fi
+  while [ "$depth" -lt 40 ]; do
+    candidate_dir="${candidate%/*}"
+    candidate_base="${candidate##*/}"
+    canonical_dir="$(cd -P -- "$candidate_dir" 2>/dev/null && pwd -P)" || return 1
+    canonical_candidate="$canonical_dir/$candidate_base"
 
-  # BSD/macOS readlink does not support -f. Without a trusted full file
-  # canonicalizer, reject symlink executables and safely canonicalize the
-  # containing directory only.
-  if [ -L "$candidate" ]; then
-    return 1
-  fi
+    if [ ! -L "$canonical_candidate" ]; then
+      printf '%s\n' "$canonical_candidate"
+      return 0
+    fi
 
-  candidate_dir="${candidate%/*}"
-  candidate_base="${candidate##*/}"
-  canonical_dir="$(cd -P -- "$candidate_dir" 2>/dev/null && pwd -P)" || return 1
-  printf '%s/%s\n' "$canonical_dir" "$candidate_base"
+    [ -n "$READLINK_BIN" ] || return 1
+
+    link_target="$("$READLINK_BIN" -- "$canonical_candidate" 2>/dev/null)" || return 1
+    case "$link_target" in
+      /*) candidate="$link_target" ;;
+      *) candidate="$canonical_dir/$link_target" ;;
+    esac
+    depth=$((depth + 1))
+  done
+
+  return 1
 }
 
 resolve_trusted_executable() {
