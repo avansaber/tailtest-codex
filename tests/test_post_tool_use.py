@@ -526,6 +526,7 @@ def test_output_uses_hook_specific_output_shape(tmp_path):
     )
     assert code == 0
     assert "hookSpecificOutput" in out
+    assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
     assert "additionalContext" in out["hookSpecificOutput"]
     # Must NOT be a blocking decision; mid-turn surfacing is non-blocking.
     assert "decision" not in out
