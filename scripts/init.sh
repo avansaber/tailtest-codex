@@ -97,7 +97,7 @@ canonicalize_executable_candidate() {
 
     [ -n "$READLINK_BIN" ] || return 1
 
-    link_target="$("$READLINK_BIN" -- "$canonical_candidate" 2>/dev/null)" || return 1
+    link_target="$("$READLINK_BIN" "$canonical_candidate" 2>/dev/null)" || return 1
     case "$link_target" in
       /*) candidate="$link_target" ;;
       *) candidate="$canonical_dir/$link_target" ;;

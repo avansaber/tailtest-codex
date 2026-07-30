@@ -312,6 +312,10 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
         "  printf '%s\\n' 'unexpected-readlink-f' >> \"$TAILTEST_READLINK_MARKER\"\n"
         "  exit 1\n"
         "fi\n"
+        'if [ "${1:-}" = "--" ]; then\n'
+        "  printf '%s\\n' 'unexpected-readlink-double-dash' >> \"$TAILTEST_READLINK_MARKER\"\n"
+        "  exit 1\n"
+        "fi\n"
         "printf '%s\\n' 'plain-readlink-used' >> \"$TAILTEST_READLINK_MARKER\"\n"
         'exec "$TAILTEST_TEST_READLINK_BIN" "$@"\n',
         encoding="utf-8",
@@ -349,6 +353,7 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
     readlink_calls = readlink_marker.read_text(encoding="utf-8")
     assert "plain-readlink-used" in readlink_calls
     assert "unexpected-readlink-f" not in readlink_calls
+    assert "unexpected-readlink-double-dash" not in readlink_calls
     installed = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
     assert "SessionStart" in installed["hooks"]
 
