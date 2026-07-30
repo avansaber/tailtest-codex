@@ -107,6 +107,47 @@ class TestPreExistingFileSkipped:
 
 
 class TestGitCleanMtimeChurnSkipped:
+    def test_status_false_positive_does_not_queue_clean_tracked_file(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Only content/index evidence may qualify a Git-tracked file."""
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        baseline = time.time() - 5
+
+        def fake_git_run(command, **_kwargs):
+            if command == ["git", "rev-parse", "--is-inside-work-tree"]:
+                return subprocess.CompletedProcess(command, 0, stdout="true\n")
+            if command == [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            ]:
+                # Simulate a racy stat-only status entry for an otherwise clean file.
+                return subprocess.CompletedProcess(command, 0, stdout=b" M app.py\0")
+            if command in (
+                ["git", "diff", "--no-renames", "--name-only", "-z"],
+                ["git", "diff", "--cached", "--no-renames", "--name-only", "-z"],
+                ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+            ):
+                return subprocess.CompletedProcess(command, 0, stdout=b"")
+            raise AssertionError(f"unexpected Git command: {command!r}")
+
+        monkeypatch.setattr("hooks.lib.scanner.subprocess.run", fake_git_run)
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert results == []
+
     def test_clean_tracked_file_with_new_mtime_is_skipped_when_git_required(
         self,
         tmp_path,
@@ -137,6 +178,25 @@ class TestGitCleanMtimeChurnSkipped:
         baseline = time.time()
         time.sleep(0.05)
         src.write_text("def app():\n    return 2\n")
+
+        results = sweep_mtime_changed(
+            str(tmp_path),
+            baseline,
+            [],
+            require_git_change=True,
+        )
+
+        assert results == [{"path": "app.py", "language": "python"}]
+
+    def test_staged_tracked_file_is_detected_when_git_required(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time() - 5
+        src.write_text("def app():\n    return 2\n")
+        _git(tmp_path, "add", "app.py")
 
         results = sweep_mtime_changed(
             str(tmp_path),

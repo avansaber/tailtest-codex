@@ -80,8 +80,8 @@ def sweep_mtime_changed(
     at exactly the watermark are treated as pre-existing.
 
     When require_git_change is true inside a Git worktree, mtime alone is
-    insufficient: a tracked file must also appear in `git status`, or it is
-    treated as clean churn from checkout/rebase/build/test activity.
+    insufficient: a file must have Git content/index evidence or be untracked,
+    or it is treated as clean churn from checkout/rebase/build/test activity.
     """
     changed: list[dict] = []
     git_changed_paths = _git_changed_paths(project_root) if require_git_change else None
@@ -122,7 +122,7 @@ def sweep_mtime_changed(
 
 
 def _git_changed_paths(project_root: str) -> set[str] | None:
-    """Return dirty/untracked project-relative paths, or None outside Git."""
+    """Return content/index changed or untracked paths, or None outside Git."""
     try:
         inside = subprocess.run(
             ["git", "rev-parse", "--is-inside-work-tree"],
@@ -137,44 +137,39 @@ def _git_changed_paths(project_root: str) -> set[str] | None:
     if inside.returncode != 0 or inside.stdout.strip().lower() != "true":
         return None
 
-    try:
-        status = subprocess.run(
-            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
-            capture_output=True,
-            cwd=project_root,
-            timeout=5,
-            check=False,
-        )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-        return None
-    if status.returncode != 0:
-        return None
-
-    return _parse_porcelain_paths(status.stdout)
-
-
-def _parse_porcelain_paths(raw: bytes) -> set[str]:
-    """Parse `git status --porcelain=v1 -z` paths into normalized rel paths."""
+    commands = (
+        ["git", "diff", "--no-renames", "--name-only", "-z"],
+        ["git", "diff", "--cached", "--no-renames", "--name-only", "-z"],
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    )
     paths: set[str] = set()
-    entries = raw.decode("utf-8", errors="surrogateescape").split("\0")
-    index = 0
-    while index < len(entries):
-        entry = entries[index]
-        index += 1
-        if not entry or len(entry) < 4 or entry[2] != " ":
-            continue
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                cwd=project_root,
+                timeout=5,
+                check=False,
+            )
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0:
+            return None
+        paths.update(_parse_nul_paths(result.stdout))
 
-        status = entry[:2]
-        path = entry[3:]
-        if path:
-            paths.add(path.replace("\\", "/"))
-
-        if ("R" in status or "C" in status) and index < len(entries):
-            old_path = entries[index]
-            index += 1
-            if old_path:
-                paths.add(old_path.replace("\\", "/"))
     return paths
+
+
+def _parse_nul_paths(raw: bytes) -> set[str]:
+    """Parse NUL-delimited Git paths into normalized project-relative paths."""
+    if not isinstance(raw, bytes):
+        return set()
+    return {
+        path.replace("\\", "/")
+        for path in raw.decode("utf-8", errors="surrogateescape").split("\0")
+        if path
+    }
 
 
 def extract_files_from_patch(patch_text: str) -> list[str]:
