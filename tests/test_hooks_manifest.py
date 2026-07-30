@@ -297,13 +297,17 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
         pytest.skip(f"bash symlink creation unavailable: {link_result.stderr}")
 
     link_probe = subprocess.run(
-        [bash, "-lc", '[ -L "$TAILTEST_LINK" ]'],
+        [
+            bash,
+            "-lc",
+            '[ -L "$TAILTEST_LINK" ] && [ -f "$TAILTEST_LINK" ] && [ -x "$TAILTEST_LINK" ]',
+        ],
         env={**os.environ, "TAILTEST_LINK": outside_python_bash},
         capture_output=True,
         text=True,
     )
     if link_probe.returncode != 0:
-        pytest.skip("bash-visible symlink creation unavailable")
+        pytest.skip("bash-visible executable symlink creation unavailable")
 
     fake_readlink = outside_bin / "readlink"
     fake_readlink.write_text(
