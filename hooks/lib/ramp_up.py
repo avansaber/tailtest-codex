@@ -6,10 +6,8 @@ import fnmatch
 import json
 import os
 import subprocess
-from typing import Optional
 
 from hooks.lib.runners import RAMP_UP_EXT_MAP, RAMP_UP_SKIP_DIRS
-from hooks.lib.session import save_session
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -19,29 +17,67 @@ RAMP_UP_SENTINEL: str = ".ramp-up-initiated"
 
 # Path fragments that indicate non-testable content
 _RAMP_UP_SKIP_FRAGMENTS: tuple[str, ...] = (
-    "node_modules/", ".venv/", "venv/", ".env/", "env/",
-    "dist/", "build/", "generated/", ".git/", "vendor/",
-    "migrations/", "db/migrate/", "database/migrations/",
-    "__pycache__/", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/",
-    "target/", ".cargo/", "coverage/", ".nyc_output/",
-    ".next/", ".nuxt/", ".svelte-kit/", ".tailtest/",
+    "node_modules/",
+    ".venv/",
+    "venv/",
+    ".env/",
+    "env/",
+    "dist/",
+    "build/",
+    "generated/",
+    ".git/",
+    "vendor/",
+    "migrations/",
+    "db/migrate/",
+    "database/migrations/",
+    "__pycache__/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    "target/",
+    ".cargo/",
+    "coverage/",
+    ".nyc_output/",
+    ".next/",
+    ".nuxt/",
+    ".svelte-kit/",
+    ".tailtest/",
 )
 
 _RAMP_UP_TEST_PATTERNS: tuple[str, ...] = (
-    "test_", "_test.", ".test.", ".spec.", "_spec.", "Test.", "Tests.", "IT.",
+    "test_",
+    "_test.",
+    ".test.",
+    ".spec.",
+    "_spec.",
+    "Test.",
+    "Tests.",
+    "IT.",
 )
 
-_RAMP_UP_BOILERPLATE: frozenset[str] = frozenset({
-    "manage.py", "wsgi.py", "asgi.py", "__main__.py",
-    "middleware.ts", "middleware.js",
-})
+_RAMP_UP_BOILERPLATE: frozenset[str] = frozenset(
+    {
+        "manage.py",
+        "wsgi.py",
+        "asgi.py",
+        "__main__.py",
+        "middleware.ts",
+        "middleware.js",
+    }
+)
 
 _RAMP_UP_GO_GENERATED_PREFIXES: tuple[str, ...] = ("mock_",)
 _RAMP_UP_GO_GENERATED_SUFFIXES: tuple[str, ...] = ("_mock.go", "_gen.go", ".pb.go")
 _RAMP_UP_JS_GENERATED_SUFFIXES: tuple[str, ...] = (".generated.ts", ".graphql.ts")
 
 _RAMP_UP_PATH_SCORE_HIGH: tuple[str, ...] = ("services/", "models/", "app/", "lib/")
-_RAMP_UP_PATH_SCORE_MED: tuple[str, ...] = ("src/", "core/", "api/", "controllers/", "handlers/")
+_RAMP_UP_PATH_SCORE_MED: tuple[str, ...] = (
+    "src/",
+    "core/",
+    "api/",
+    "controllers/",
+    "handlers/",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +85,7 @@ _RAMP_UP_PATH_SCORE_MED: tuple[str, ...] = ("src/", "core/", "api/", "controller
 # ---------------------------------------------------------------------------
 
 
-def _read_json(path: str) -> Optional[dict]:
+def _read_json(path: str) -> dict | None:
     try:
         with open(path) as fh:
             return json.load(fh)
@@ -113,12 +149,19 @@ def _git_commit_counts(project_root: str) -> dict[str, int]:
     try:
         result = subprocess.run(
             [
-                "git", "-C", project_root, "log",
-                "--name-only", "--pretty=format:", "--no-merges", "--max-count=500",
+                "git",
+                "-C",
+                project_root,
+                "log",
+                "--name-only",
+                "--pretty=format:",
+                "--no-merges",
+                "--max-count=500",
             ],
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
         counts: dict[str, int] = {}
         for line in result.stdout.splitlines():
@@ -126,7 +169,7 @@ def _git_commit_counts(project_root: str) -> dict[str, int]:
             if line:
                 counts[line] = counts.get(line, 0) + 1
         return counts
-    except Exception:
+    except Exception:  # noqa: BLE001 - Git history is an optional ranking input
         return {}
 
 
@@ -149,8 +192,14 @@ def _is_ramp_up_filtered(
         if frag in rel_path:
             return True
 
-    for suffix in (".config.js", ".config.ts", ".config.mjs", ".config.cjs",
-                   ".config.jsx", ".config.tsx"):
+    for suffix in (
+        ".config.js",
+        ".config.ts",
+        ".config.mjs",
+        ".config.cjs",
+        ".config.jsx",
+        ".config.tsx",
+    ):
         if lower.endswith(suffix):
             return True
 
@@ -169,10 +218,7 @@ def _is_ramp_up_filtered(
     if any(fname.endswith(s) for s in _RAMP_UP_JS_GENERATED_SUFFIXES):
         return True
 
-    if lower == "dockerfile" or lower.endswith(".dockerfile"):
-        return True
-
-    return False
+    return lower == "dockerfile" or lower.endswith(".dockerfile")
 
 
 def _has_existing_test(basename: str, abs_source_path: str, project_root: str) -> bool:
@@ -180,20 +226,27 @@ def _has_existing_test(basename: str, abs_source_path: str, project_root: str) -
     source_dir = os.path.dirname(abs_source_path)
     siblings = [
         f"{basename}_test.go",
-        f"{basename}.test.ts", f"{basename}.spec.ts",
-        f"{basename}.test.tsx", f"{basename}.spec.tsx",
-        f"{basename}.test.js", f"{basename}.spec.js",
-        f"{basename}.test.jsx", f"{basename}.spec.jsx",
+        f"{basename}.test.ts",
+        f"{basename}.spec.ts",
+        f"{basename}.test.tsx",
+        f"{basename}.spec.tsx",
+        f"{basename}.test.js",
+        f"{basename}.spec.js",
+        f"{basename}.test.jsx",
+        f"{basename}.spec.jsx",
     ]
     for sibling in siblings:
         if os.path.exists(os.path.join(source_dir, sibling)):
             return True
 
     stems = {
-        f"test_{basename}", f"{basename}_test",
-        f"{basename}.test", f"{basename}.spec",
+        f"test_{basename}",
+        f"{basename}_test",
+        f"{basename}.test",
+        f"{basename}.spec",
         f"{basename}_spec",
-        f"{basename}Test", f"{basename}Tests",
+        f"{basename}Test",
+        f"{basename}Tests",
     }
     for tdir in ("tests/", "__tests__/", "spec/", "test/", "src/test/"):
         abs_tdir = os.path.join(project_root, tdir)
@@ -273,8 +326,7 @@ def ramp_up_scan(project_root: str, runners: dict, session: dict) -> None:
 
     for root, dirnames, files in os.walk(project_root):
         dirnames[:] = [
-            d for d in dirnames
-            if d not in RAMP_UP_SKIP_DIRS and not d.startswith(".")
+            d for d in dirnames if d not in RAMP_UP_SKIP_DIRS and not d.startswith(".")
         ]
 
         for fname in files:
@@ -292,7 +344,9 @@ def ramp_up_scan(project_root: str, runners: dict, session: dict) -> None:
                 continue
 
             basename = os.path.splitext(fname)[0]
-            score = _score_candidate(rel_path, basename, abs_path, commit_counts, project_root)
+            score = _score_candidate(
+                rel_path, basename, abs_path, commit_counts, project_root
+            )
             if score > 0:
                 candidates.append((score, rel_path, language))
 
@@ -349,14 +403,21 @@ def _write_orphaned_report(project_root: str) -> None:
     deferred_failures: list = old.get("deferred_failures", [])
     generated_tests: dict = old.get("generated_tests", {})
 
-    runner_parts = [f"{lang}/{info.get('command', '?')}" for lang, info in runners.items()]
+    runner_parts = [
+        f"{lang}/{info.get('command', '?')}" for lang, info in runners.items()
+    ]
     runner_str = ", ".join(runner_parts) if runner_parts else "no runner"
 
-    lines = [f"# tailtest session -- {started_at}", "",
-             f"Runner: {runner_str}  |  Depth: {depth}", "",
-             "## Files tested", "",
-             "| File | Test file | Result |",
-             "|---|---|---|"]
+    lines = [
+        f"# tailtest session -- {started_at}",
+        "",
+        f"Runner: {runner_str}  |  Depth: {depth}",
+        "",
+        "## Files tested",
+        "",
+        "| File | Test file | Result |",
+        "|---|---|---|",
+    ]
 
     deferred_paths = {d["file"] for d in deferred_failures if isinstance(d, dict)}
     counts = {"passed": 0, "fixed": 0, "deferred": 0, "unresolved": 0}

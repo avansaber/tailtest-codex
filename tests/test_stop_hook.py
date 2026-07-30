@@ -6,6 +6,7 @@ graceful handling of missing session.json, duplicate deduplication.
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -44,10 +45,12 @@ def _base_session(tmp_path, **kwargs) -> dict:
 
 def _run_hook(tmp_path, event: dict) -> dict:
     import subprocess
+
     result = subprocess.run(
         [sys.executable, STOP_HOOK_PATH],
         input=json.dumps(event),
         capture_output=True,
+        check=False,
         text=True,
         cwd=str(tmp_path),
     )
@@ -63,6 +66,25 @@ def _event(tmp_path, stop_hook_active: bool = False) -> dict:
         "last_assistant_message": "I created billing.py",
         "transcript_path": str(tmp_path / "transcript.jsonl"),
     }
+
+
+def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"git unavailable or failed: {result.stderr}")
+    return result
+
+
+def _init_git_repo(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "tailtest@example.invalid")
+    _git(tmp_path, "config", "user.name", "Tailtest")
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +175,47 @@ class TestPythonFileQueued:
         assert entry["language"] == "python"
 
 
+class TestGitCleanMtimeChurn:
+    def test_clean_tracked_file_with_refreshed_mtime_does_not_block(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time() - 5
+        os.utime(src, None)
+        session = _base_session(tmp_path, turn_start_mtime=baseline)
+        _write_session(tmp_path, session)
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out == {}
+        assert saved["pending_files"] == []
+
+    def test_dirty_tracked_file_is_queued_as_legacy_file(self, tmp_path):
+        _init_git_repo(tmp_path)
+        src = tmp_path / "app.py"
+        src.write_text("def app():\n    return 1\n")
+        _git(tmp_path, "add", "app.py")
+        _git(tmp_path, "commit", "-m", "init")
+        baseline = time.time()
+        time.sleep(0.05)
+        src.write_text("def app():\n    return 2\n")
+        session = _base_session(tmp_path, turn_start_mtime=baseline)
+        _write_session(tmp_path, session)
+
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        with open(tmp_path / ".tailtest" / "session.json") as fh:
+            saved = json.load(fh)
+        assert out["decision"] == "block"
+        assert saved["pending_files"] == [
+            {"path": "app.py", "language": "python", "status": "legacy-file"}
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Paused session
 # ---------------------------------------------------------------------------
@@ -160,7 +223,9 @@ class TestPythonFileQueued:
 
 class TestPausedSession:
     def test_paused_session_returns_continue(self, tmp_path):
-        session = _base_session(tmp_path, paused=True, turn_start_mtime=time.time() - 10)
+        session = _base_session(
+            tmp_path, paused=True, turn_start_mtime=time.time() - 10
+        )
         _write_session(tmp_path, session)
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
@@ -168,7 +233,9 @@ class TestPausedSession:
         assert "decision" not in out  # empty {} = continue per Codex schema
 
     def test_paused_session_does_not_queue_files(self, tmp_path):
-        session = _base_session(tmp_path, paused=True, turn_start_mtime=time.time() - 10)
+        session = _base_session(
+            tmp_path, paused=True, turn_start_mtime=time.time() - 10
+        )
         _write_session(tmp_path, session)
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
@@ -207,10 +274,12 @@ class TestNoSessionJson:
 
     def test_no_session_json_exits_cleanly(self, tmp_path):
         import subprocess
+
         result = subprocess.run(
             [sys.executable, STOP_HOOK_PATH],
             input=json.dumps({"cwd": str(tmp_path), "stop_hook_active": False}),
             capture_output=True,
+            check=False,
             text=True,
         )
         assert result.returncode == 0
@@ -309,7 +378,9 @@ class TestDuplicatePendingFilesNotAdded:
         session = _base_session(
             tmp_path,
             turn_start_mtime=time.time() - 10,
-            pending_files=[{"path": "billing.py", "language": "python", "status": "new-file"}],
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
         )
         _write_session(tmp_path, session)
         _run_hook(tmp_path, _event(tmp_path))
@@ -324,7 +395,9 @@ class TestDuplicatePendingFilesNotAdded:
         session = _base_session(
             tmp_path,
             turn_start_mtime=time.time() - 10,
-            pending_files=[{"path": "billing.py", "language": "python", "status": "new-file"}],
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
         )
         _write_session(tmp_path, session)
         out = _run_hook(tmp_path, _event(tmp_path))
