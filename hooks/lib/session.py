@@ -3,11 +3,186 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import time
 
 from hooks.lib.filter import _norm
+
+
+MAX_PENDING_FILES = 100
+MAX_STATE_ITEMS = 100
+MAX_STATE_STRING_CHARS = 512
+_ALLOWED_PENDING_STATUSES = {"new-file", "legacy-file", "ramp-up"}
+_ALLOWED_DEPTHS = {"simple", "standard", "thorough", "adversarial"}
+
+
+def _bounded_string(value: object, maximum: int = MAX_STATE_STRING_CHARS) -> str | None:
+    if not isinstance(value, str) or not value or len(value) > maximum:
+        return None
+    return value
+
+
+def qualify_pending_path(project_root: str, value: object) -> str | None:
+    """Return a normalized project-relative path, or None if it escapes."""
+    path = _bounded_string(value)
+    if path is None or "\x00" in path:
+        return None
+    drive, _ = os.path.splitdrive(path)
+    if drive or os.path.isabs(path):
+        return None
+
+    root_real = os.path.realpath(project_root)
+    candidate_real = os.path.realpath(os.path.join(root_real, path))
+    try:
+        common = os.path.commonpath([root_real, candidate_real])
+    except ValueError:
+        return None
+    if os.path.normcase(common) != os.path.normcase(root_real):
+        return None
+
+    relative = _norm(os.path.relpath(candidate_real, root_real))
+    return None if relative in {"", "."} else relative
+
+
+def validate_pending_files(project_root: str, raw: object) -> list[dict]:
+    """Retain only bounded, well-formed entries contained by project_root."""
+    if not isinstance(raw, list):
+        return []
+    valid = []
+    for entry in raw[:MAX_PENDING_FILES]:
+        if not isinstance(entry, dict):
+            continue
+        path = qualify_pending_path(project_root, entry.get("path"))
+        language = _bounded_string(entry.get("language"), 64)
+        status = _bounded_string(entry.get("status"), 32)
+        if (
+            path is not None
+            and language is not None
+            and status in _ALLOWED_PENDING_STATUSES
+        ):
+            valid.append({"path": path, "language": language, "status": status})
+    return valid
+
+
+def _bounded_string_list(raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw[:MAX_STATE_ITEMS] if _bounded_string(item) is not None]
+
+
+def _bounded_string_map(raw: object) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    valid = {}
+    for key, value in list(raw.items())[:MAX_STATE_ITEMS]:
+        safe_key = _bounded_string(key)
+        safe_value = _bounded_string(value)
+        if safe_key is not None and safe_value is not None:
+            valid[safe_key] = safe_value
+    return valid
+
+
+def _validated_runners(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        return {}
+    valid = {}
+    for language, info in list(raw.items())[:32]:
+        safe_language = _bounded_string(language, 64)
+        if safe_language is None or not isinstance(info, dict):
+            continue
+        safe_info = dict(info)
+        safe_info["command"] = _bounded_string(info.get("command"), 256) or "?"
+        safe_info["test_location"] = (
+            _bounded_string(info.get("test_location"), 256) or "tests/"
+        )
+        valid[safe_language] = safe_info
+    return valid
+
+
+def _validated_fix_attempts(raw: object) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    valid = {}
+    for key, value in list(raw.items())[:MAX_STATE_ITEMS]:
+        safe_key = _bounded_string(key)
+        if (
+            safe_key is not None
+            and isinstance(value, int)
+            and not isinstance(value, bool)
+        ):
+            valid[safe_key] = min(max(value, 0), 3)
+    return valid
+
+
+def _finite_number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _validated_numeric_map(raw: object) -> dict[str, int | float]:
+    if not isinstance(raw, dict):
+        return {}
+    valid = {}
+    for key, value in list(raw.items())[:MAX_STATE_ITEMS]:
+        safe_key = _bounded_string(key)
+        if safe_key is not None and _finite_number(value) is not None:
+            valid[safe_key] = value
+    return valid
+
+
+def _validated_dict_list(raw: object) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    return [dict(item) for item in raw[:MAX_STATE_ITEMS] if isinstance(item, dict)]
+
+
+def validate_session_state(project_root: str, raw: object) -> dict:
+    """Sanitize project-local state consumed by automatic hooks.
+
+    Unknown keys remain for forward compatibility; every consumed field is
+    replaced with a bounded safe value.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    session = dict(raw)
+    session["pending_files"] = validate_pending_files(
+        project_root, raw.get("pending_files", [])
+    )
+    session["runners"] = _validated_runners(raw.get("runners", {}))
+    depth = raw.get("depth")
+    session["depth"] = (
+        depth if isinstance(depth, str) and depth in _ALLOWED_DEPTHS else "standard"
+    )
+    session["paused"] = (
+        raw.get("paused") if isinstance(raw.get("paused"), bool) else False
+    )
+    session["touched_files"] = _bounded_string_list(raw.get("touched_files", []))
+    session["deferred_failures"] = _validated_dict_list(
+        raw.get("deferred_failures", [])
+    )
+    session["generated_tests"] = _bounded_string_map(raw.get("generated_tests", {}))
+    session["fix_attempts"] = _validated_fix_attempts(raw.get("fix_attempts", {}))
+    session["complexity_scores"] = _validated_numeric_map(
+        raw.get("complexity_scores", {})
+    )
+    session["last_failures"] = _validated_dict_list(raw.get("last_failures", []))
+    session["scenario_log"] = _validated_dict_list(raw.get("scenario_log", []))
+    turn_start = _finite_number(raw.get("turn_start_mtime", 0.0))
+    session["turn_start_mtime"] = turn_start if turn_start is not None else 0.0
+    post_tool = _finite_number(
+        raw.get("post_tool_last_fire_mtime", session["turn_start_mtime"])
+    )
+    session["post_tool_last_fire_mtime"] = (
+        post_tool if post_tool is not None else session["turn_start_mtime"]
+    )
+    return session
 
 
 def load_session(project_root: str) -> dict:
@@ -16,7 +191,7 @@ def load_session(project_root: str) -> dict:
     if os.path.exists(session_path):
         try:
             with open(session_path) as fh:
-                return json.load(fh)
+                return validate_session_state(project_root, json.load(fh))
         except (json.JSONDecodeError, OSError):
             pass
     return {
