@@ -154,15 +154,25 @@ def _latest_user_message(event: dict) -> str:
 
 def _user_requested_tool_stop(event: dict) -> bool:
     """Return True only for a valid directive in the latest current user message."""
-    in_fence = False
+    fence_opener: tuple[str, int] | None = None
     for line in _latest_user_message(event).splitlines():
         stripped = line.strip()
         if stripped.startswith(">"):
             continue
-        if stripped.startswith(("```", "~~~")):
-            in_fence = not in_fence
+        fence_match = re.match(r"^([`~])\1{2,}", stripped)
+        if fence_match:
+            marker = fence_match.group(1)
+            marker_length = len(fence_match.group(0))
+            if fence_opener is None:
+                fence_opener = (marker, marker_length)
+            elif (
+                marker == fence_opener[0]
+                and marker_length >= fence_opener[1]
+                and not stripped[marker_length:].strip()
+            ):
+                fence_opener = None
             continue
-        if in_fence:
+        if fence_opener is not None:
             continue
         if _DEFER_COMMAND.fullmatch(stripped):
             return True

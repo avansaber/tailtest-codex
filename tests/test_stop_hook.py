@@ -587,6 +587,24 @@ class TestExplicitStopDefer:
         # Assert
         assert out["decision"] == "block"
 
+    def test_mixed_fence_delimiters_do_not_expose_embedded_defer_command(
+        self, tmp_path
+    ):
+        # Arrange
+        session = _base_session(tmp_path, turn_start_mtime=time.time() - 10)
+        _write_session(tmp_path, session)
+        (tmp_path / "billing.py").write_text("def billing(): pass\n")
+        _write_user_transcript(
+            tmp_path,
+            "~~~text\n```\n/tailtest defer\n~~~\nThen run tests.",
+        )
+
+        # Act
+        out = _run_hook(tmp_path, _event(tmp_path))
+
+        # Assert
+        assert out["decision"] == "block"
+
     def test_external_transcript_path_fails_closed(self, tmp_path):
         # Arrange
         session = _base_session(tmp_path, turn_start_mtime=time.time() - 10)
