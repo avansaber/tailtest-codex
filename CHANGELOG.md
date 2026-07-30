@@ -15,7 +15,7 @@ Plugin icon for the Codex marketplace display.
 
 - Added `assets/icon.svg` (512x512, rounded-square tile with the tailtest shield + checkmark mark, emerald on near-black). Reads cleanly at marketplace tile sizes (32px, 64px, 128px).
 - `.codex-plugin/plugin.json` now references the icon via `interface.composerIcon = "./assets/icon.svg"`. Per the Codex plugin manifest spec; renders in the Codex app composer / marketplace browser.
-- No behavioral changes. 400 tests still passing.
+- No behavioral changes.
 
 Triggered by `tailtest-codex#5` (thanks to `@internet-dot` for the report and the concrete instructions).
 

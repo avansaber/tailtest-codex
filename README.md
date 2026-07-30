@@ -6,9 +6,9 @@
 [![Validation](https://img.shields.io/badge/validated-Windows_%7C_WSL%2FLinux-lightgrey)](https://github.com/avansaber/tailtest-codex)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-0.129.0%2B-purple)](https://developers.openai.com/codex)
 
-**tailtest-codex** is the open-source AI software testing layer for [OpenAI Codex CLI](https://developers.openai.com/codex). It runs inside the build loop: PostToolUse + Stop hooks fire after every `apply_patch` Codex makes, queue the changed files, generate scenarios via the R1-R15 rule layer, run them with your project's existing test runner, and surface failures back to Codex within the same turn. Hook-based. Deterministic. No prompting required.
+**tailtest-codex** is the open-source AI software testing layer for [OpenAI Codex CLI](https://developers.openai.com/codex). It runs inside the build loop: `PostToolUse` watches the supported `Bash`, `apply_patch`, `Edit`, and `Write` events, while `Stop` catches validated pending work at the turn boundary. Together they queue changed files, generate scenarios via the R1-R15 rule layer, run them with your project's existing test runner, and surface failures back to Codex within the same turn. Hook-based. Deterministic. No prompting required.
 
-Open source (MIT), no telemetry, no SaaS account. Same R1-R15 rule layer + adversarial mode (R15) as the Claude Code, Cursor, and Cline variants -- 1,234 plugin tests total across the four hosts.
+Open source (MIT), no telemetry, no SaaS account. Same R1-R15 rule layer + adversarial mode (R15) as the Claude Code, Cursor, and Cline variants.
 
 **[Read more on tailtest.com](https://www.tailtest.com/) · [Platform overview](https://www.tailtest.com/platform/) · [Agent-edit testing deep dive](https://www.tailtest.com/platform/agent-edits/) · [Codex docs](https://www.tailtest.com/docs/codex/)**
 
