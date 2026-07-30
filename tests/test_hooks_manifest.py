@@ -244,6 +244,9 @@ def test_initializer_does_not_execute_project_symlinked_readlink_helper(
     assert "SessionStart" in installed["hooks"]
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX symlink/readlink portability coverage"
+)
 def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git" / "bin" / "bash.exe"
     bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
