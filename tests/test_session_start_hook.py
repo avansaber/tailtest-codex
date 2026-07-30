@@ -44,7 +44,9 @@ def _run_session_start(tmp_path, monkeypatch, capsys, payload: object) -> dict:
 
 
 @pytest.mark.parametrize("payload", [[], None, "unexpected scalar"])
-def test_non_mapping_event_payload_uses_empty_event(tmp_path, monkeypatch, capsys, payload):
+def test_non_mapping_event_payload_uses_empty_event(
+    tmp_path, monkeypatch, capsys, payload
+):
     monkeypatch.setenv("TAILTEST_PROJECT_CWD", str(tmp_path))
 
     output = _run_session_start(tmp_path, monkeypatch, capsys, payload)
