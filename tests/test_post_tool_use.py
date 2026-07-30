@@ -211,6 +211,28 @@ def test_apply_patch_input_alias_field(tmp_path):
     assert "src/alias.py" in out["hookSpecificOutput"]["additionalContext"]
 
 
+def test_apply_patch_command_alias_extracts_path_despite_future_watermark(tmp_path):
+    """Codex puts apply_patch text in tool_input.command."""
+    _write_session(
+        tmp_path,
+        _base_session(tmp_path, post_tool_last_fire_mtime=time.time() + 3600),
+    )
+    _make_py(tmp_path, "src/command.py")
+    patch = "*** Begin Patch\n*** Update File: src/command.py\n@@\n*** End Patch\n"
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(tmp_path, tool_input={"command": patch}),
+    )
+
+    assert code == 0
+    assert "src/command.py" in out["hookSpecificOutput"]["additionalContext"]
+    assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert any(
+        p["path"] == "src/command.py" for p in _load_session(tmp_path)["pending_files"]
+    )
+
+
 def test_apply_patch_empty_payload_falls_back_to_sweep(tmp_path):
     """No patch text means we should fall back to mtime sweep."""
     session = _base_session(tmp_path)
@@ -259,6 +281,31 @@ def test_canonical_bash_tool_uses_mtime_sweep(tmp_path):
     )
     assert code == 0
     assert "src/via_bash.py" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_bash_command_patch_like_text_does_not_parse_as_patch(tmp_path):
+    """Shell command text is untrusted command data, not a patch payload."""
+    _write_session(
+        tmp_path,
+        _base_session(tmp_path, post_tool_last_fire_mtime=time.time() + 3600),
+    )
+    _make_py(tmp_path, "src/not_changed.py")
+    patch_like_command = (
+        "*** Begin Patch\n*** Update File: src/not_changed.py\n@@\n*** End Patch\n"
+    )
+
+    code, out = _run_hook(
+        tmp_path,
+        _event(
+            tmp_path,
+            tool_name="Bash",
+            tool_input={"command": patch_like_command},
+        ),
+    )
+
+    assert code == 0
+    assert out == {}
+    assert _load_session(tmp_path)["pending_files"] == []
 
 
 def test_shell_mtime_sweep_skips_clean_tracked_file_churn(tmp_path):
