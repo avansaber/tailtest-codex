@@ -325,6 +325,19 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
         encoding="utf-8",
     )
     fake_readlink.chmod(fake_readlink.stat().st_mode | stat.S_IEXEC)
+    fake_readlink_bash = f"{outside_bin_lookup.stdout.strip()}/readlink"
+    readlink_probe = subprocess.run(
+        [
+            bash,
+            "-lc",
+            '[ -f "$TAILTEST_READLINK" ] && [ -x "$TAILTEST_READLINK" ]',
+        ],
+        env={**os.environ, "TAILTEST_READLINK": fake_readlink_bash},
+        capture_output=True,
+        text=True,
+    )
+    if readlink_probe.returncode != 0:
+        pytest.skip("bash-visible executable readlink shim creation unavailable")
 
     for name in ("python3", "python", "cygpath"):
         helper = tmp_path / name
