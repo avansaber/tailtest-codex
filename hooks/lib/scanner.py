@@ -28,12 +28,32 @@ from .filter import detect_language, is_filtered
 
 # Directories pruned during walk for performance.
 _SKIP_DIRS = {
-    "node_modules", ".venv", "venv", ".env", "env",
-    "dist", "build", "generated", ".git", "vendor",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    "target", ".cargo", "coverage", ".nyc_output",
-    ".next", ".nuxt", ".svelte-kit", ".tailtest",
-    "migrations", "k8s", "deploy", "infra",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".env",
+    "env",
+    "dist",
+    "build",
+    "generated",
+    ".git",
+    "vendor",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "target",
+    ".cargo",
+    "coverage",
+    ".nyc_output",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".tailtest",
+    "migrations",
+    "k8s",
+    "deploy",
+    "infra",
 }
 
 # Standard unified diff header.
@@ -64,14 +84,11 @@ def sweep_mtime_changed(
     treated as clean churn from checkout/rebase/build/test activity.
     """
     changed: list[dict] = []
-    git_changed_paths = (
-        _git_changed_paths(project_root) if require_git_change else None
-    )
+    git_changed_paths = _git_changed_paths(project_root) if require_git_change else None
 
     for root, dirnames, filenames in os.walk(project_root):
         dirnames[:] = [
-            d for d in dirnames
-            if d not in _SKIP_DIRS and not d.startswith(".")
+            d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")
         ]
 
         for filename in filenames:
@@ -113,6 +130,7 @@ def _git_changed_paths(project_root: str) -> set[str] | None:
             cwd=project_root,
             text=True,
             timeout=2,
+            check=False,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return None
@@ -125,6 +143,7 @@ def _git_changed_paths(project_root: str) -> set[str] | None:
             capture_output=True,
             cwd=project_root,
             timeout=5,
+            check=False,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return None

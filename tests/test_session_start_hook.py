@@ -16,7 +16,9 @@ def _base_session(project_root: str, turn_start_mtime: float) -> dict:
         "depth": "standard",
         "paused": False,
         "report_path": ".tailtest/reports/session-123.md",
-        "pending_files": [{"path": "src/app.py", "language": "python", "status": "new-file"}],
+        "pending_files": [
+            {"path": "src/app.py", "language": "python", "status": "new-file"}
+        ],
         "touched_files": [],
         "fix_attempts": {"src/app.py": 2},
         "deferred_failures": [],
@@ -34,7 +36,9 @@ def _run_session_start(tmp_path, monkeypatch, capsys, payload: dict) -> dict:
     return json.loads(out) if out else {}
 
 
-def test_compact_rebases_mtime_watermarks_and_preserves_session_state(tmp_path, monkeypatch, capsys):
+def test_compact_rebases_mtime_watermarks_and_preserves_session_state(
+    tmp_path, monkeypatch, capsys
+):
     before_turn = time.time() - 300
     before_post = time.time() - 150
     session = _base_session(str(tmp_path), before_turn)
@@ -63,7 +67,9 @@ def test_compact_rebases_mtime_watermarks_and_preserves_session_state(tmp_path, 
     assert "src/app.py" in note
 
 
-def test_compact_adds_post_tool_watermark_when_session_never_saw_a_post_tool_event(tmp_path, monkeypatch, capsys):
+def test_compact_adds_post_tool_watermark_when_session_never_saw_a_post_tool_event(
+    tmp_path, monkeypatch, capsys
+):
     before_turn = time.time() - 300
     session = _base_session(str(tmp_path), before_turn)
     save_session(str(tmp_path), session)

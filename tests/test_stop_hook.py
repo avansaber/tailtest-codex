@@ -45,10 +45,12 @@ def _base_session(tmp_path, **kwargs) -> dict:
 
 def _run_hook(tmp_path, event: dict) -> dict:
     import subprocess
+
     result = subprocess.run(
         [sys.executable, STOP_HOOK_PATH],
         input=json.dumps(event),
         capture_output=True,
+        check=False,
         text=True,
         cwd=str(tmp_path),
     )
@@ -70,6 +72,7 @@ def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
     result = subprocess.run(
         ["git", *args],
         cwd=tmp_path,
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -220,7 +223,9 @@ class TestGitCleanMtimeChurn:
 
 class TestPausedSession:
     def test_paused_session_returns_continue(self, tmp_path):
-        session = _base_session(tmp_path, paused=True, turn_start_mtime=time.time() - 10)
+        session = _base_session(
+            tmp_path, paused=True, turn_start_mtime=time.time() - 10
+        )
         _write_session(tmp_path, session)
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
@@ -228,7 +233,9 @@ class TestPausedSession:
         assert "decision" not in out  # empty {} = continue per Codex schema
 
     def test_paused_session_does_not_queue_files(self, tmp_path):
-        session = _base_session(tmp_path, paused=True, turn_start_mtime=time.time() - 10)
+        session = _base_session(
+            tmp_path, paused=True, turn_start_mtime=time.time() - 10
+        )
         _write_session(tmp_path, session)
         src = tmp_path / "billing.py"
         src.write_text("def billing(): pass\n")
@@ -267,10 +274,12 @@ class TestNoSessionJson:
 
     def test_no_session_json_exits_cleanly(self, tmp_path):
         import subprocess
+
         result = subprocess.run(
             [sys.executable, STOP_HOOK_PATH],
             input=json.dumps({"cwd": str(tmp_path), "stop_hook_active": False}),
             capture_output=True,
+            check=False,
             text=True,
         )
         assert result.returncode == 0
@@ -369,7 +378,9 @@ class TestDuplicatePendingFilesNotAdded:
         session = _base_session(
             tmp_path,
             turn_start_mtime=time.time() - 10,
-            pending_files=[{"path": "billing.py", "language": "python", "status": "new-file"}],
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
         )
         _write_session(tmp_path, session)
         _run_hook(tmp_path, _event(tmp_path))
@@ -384,7 +395,9 @@ class TestDuplicatePendingFilesNotAdded:
         session = _base_session(
             tmp_path,
             turn_start_mtime=time.time() - 10,
-            pending_files=[{"path": "billing.py", "language": "python", "status": "new-file"}],
+            pending_files=[
+                {"path": "billing.py", "language": "python", "status": "new-file"}
+            ],
         )
         _write_session(tmp_path, session)
         out = _run_hook(tmp_path, _event(tmp_path))

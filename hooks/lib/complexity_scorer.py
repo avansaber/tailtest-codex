@@ -16,7 +16,15 @@ import os
 import re
 
 # Path-name signals (checked against the lowercased filename + directory components)
-_PATH_HIGH = ("auth", "permission", "billing", "payment", "checkout", "invoice", "subscription")
+_PATH_HIGH = (
+    "auth",
+    "permission",
+    "billing",
+    "payment",
+    "checkout",
+    "invoice",
+    "subscription",
+)
 _PATH_MED = ("admin", "upload", "delete", "remove", "purge", "migrate")
 
 # Content keyword patterns
@@ -29,13 +37,16 @@ _DB_PATTERNS = re.compile(
     r"SELECT\s|INSERT\s|UPDATE\s|DELETE\s)",
     re.IGNORECASE,
 )
-_BRANCH_PATTERN = re.compile(r"\b(if |elif |else:|match |case |switch\s*\()", re.MULTILINE)
+_BRANCH_PATTERN = re.compile(
+    r"\b(if |elif |else:|match |case |switch\s*\()", re.MULTILINE
+)
 _PUBLIC_FUNC_PYTHON = re.compile(r"^def [a-z][a-z0-9_]*\(", re.MULTILINE)
 _PUBLIC_FUNC_TS = re.compile(
-    r"(^export\s+(async\s+)?function\s+\w+|^\s*public\s+(async\s+)?\w+\s*\()", re.MULTILINE
+    r"(^export\s+(async\s+)?function\s+\w+|^\s*public\s+(async\s+)?\w+\s*\()",
+    re.MULTILINE,
 )
 
-_MAX_BRANCHES = 4   # cap contribution from branches
+_MAX_BRANCHES = 4  # cap contribution from branches
 _MAX_FUNCTIONS = 5  # cap contribution from public functions
 _MAX_CONTENT_READ = 8000  # bytes -- avoid reading huge generated files
 
@@ -99,7 +110,6 @@ def score_file(file_path: str) -> tuple[int, str]:
             score += func_hits
             reasons.append(f"+{func_hits} function{'s' if func_hits > 1 else ''}")
 
-    depth, _ = score_to_depth(score)
     reasoning = ""
     if score >= 10 and reasons:
         reasoning = f"{name_stem}: {' '.join(reasons)} = {score} scenarios"

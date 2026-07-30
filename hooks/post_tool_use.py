@@ -174,11 +174,13 @@ def main() -> None:
         if entry["path"] not in existing_paths:
             abs_path = os.path.join(project_root, entry["path"])
             status = determine_status(abs_path, project_root, touched_files)
-            pending_files.append({
-                "path": entry["path"],
-                "language": entry["language"],
-                "status": status,
-            })
+            pending_files.append(
+                {
+                    "path": entry["path"],
+                    "language": entry["language"],
+                    "status": status,
+                }
+            )
             existing_paths.add(entry["path"])
             touched_files.append(entry["path"])
             newly_queued.append(

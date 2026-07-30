@@ -41,9 +41,7 @@ def _base_session(tmp_path, **kwargs) -> dict:
         "session_id": "test-session",
         "started_at": "2026-01-01T00:00:00Z",
         "project_root": str(tmp_path),
-        "runners": {
-            "python": {"command": "pytest", "test_location": "tests/"}
-        },
+        "runners": {"python": {"command": "pytest", "test_location": "tests/"}},
         "depth": "standard",
         "paused": False,
         "pending_files": [],
@@ -64,6 +62,7 @@ def _run_hook(tmp_path, event: dict) -> tuple[int, dict]:
         [sys.executable, POST_TOOL_HOOK_PATH],
         input=json.dumps(event),
         capture_output=True,
+        check=False,
         text=True,
         cwd=str(tmp_path),
     )
@@ -102,6 +101,7 @@ def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
     result = subprocess.run(
         ["git", *args],
         cwd=tmp_path,
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -187,7 +187,9 @@ def test_apply_patch_codex_envelope_extracts_path(tmp_path):
 def test_apply_patch_add_file_envelope(tmp_path):
     _write_session(tmp_path, _base_session(tmp_path))
     _make_py(tmp_path, "src/new.py")
-    patch = "*** Begin Patch\n*** Add File: src/new.py\n+def g(): return 1\n*** End Patch\n"
+    patch = (
+        "*** Begin Patch\n*** Add File: src/new.py\n+def g(): return 1\n*** End Patch\n"
+    )
     code, out = _run_hook(
         tmp_path,
         _event(tmp_path, tool_input={"patch": patch}),
@@ -447,10 +449,7 @@ def test_multi_file_patch_queues_all(tmp_path):
     _write_session(tmp_path, _base_session(tmp_path))
     _make_py(tmp_path, "src/a.py")
     _make_py(tmp_path, "src/b.py")
-    patch = (
-        "diff --git a/src/a.py b/src/a.py\n"
-        "diff --git a/src/b.py b/src/b.py\n"
-    )
+    patch = "diff --git a/src/a.py b/src/a.py\ndiff --git a/src/b.py b/src/b.py\n"
     code, out = _run_hook(
         tmp_path,
         _event(tmp_path, tool_input={"patch": patch}),
@@ -503,6 +502,7 @@ def test_malformed_event_exits_silent(tmp_path):
         [sys.executable, POST_TOOL_HOOK_PATH],
         input="not json {{{",
         capture_output=True,
+        check=False,
         text=True,
         cwd=str(tmp_path),
     )

@@ -34,6 +34,7 @@ def _git(tmp_path, *args: str) -> subprocess.CompletedProcess:
     result = subprocess.run(
         ["git", *args],
         cwd=tmp_path,
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -421,7 +422,9 @@ _LANGUAGE_MAP_CASES = [
 
 class TestAllLanguageMapExtensions:
     @pytest.mark.parametrize("ext,expected_lang,content", _LANGUAGE_MAP_CASES)
-    def test_extension_detected_with_correct_language(self, tmp_path, ext, expected_lang, content):
+    def test_extension_detected_with_correct_language(
+        self, tmp_path, ext, expected_lang, content
+    ):
         baseline = time.time() - 5
         src = tmp_path / f"source{ext}"
         src.write_text(content)
@@ -430,7 +433,9 @@ class TestAllLanguageMapExtensions:
         filename = f"source{ext}"
         assert filename in paths, f"{ext} file not detected"
         entry = next(r for r in results if r["path"] == filename)
-        assert entry["language"] == expected_lang, f"{ext}: expected {expected_lang}, got {entry['language']}"
+        assert entry["language"] == expected_lang, (
+            f"{ext}: expected {expected_lang}, got {entry['language']}"
+        )
 
 
 class TestMultipleLanguages:

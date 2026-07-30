@@ -45,4 +45,6 @@ def compress_output(text: str, max_lines: int = _MAX_LINES) -> str:
         kept = kept[:max_lines]
 
     removed = len(lines) - len(kept)
-    return "\n".join(kept) + (f"\n[...{removed} verbose lines omitted]" if removed > 0 else "")
+    return "\n".join(kept) + (
+        f"\n[...{removed} verbose lines omitted]" if removed > 0 else ""
+    )

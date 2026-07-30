@@ -26,14 +26,9 @@ import time
 # project directory (which is what Codex does).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from hooks.lib.filter import (
-    RUNNER_REQUIRED_LANGUAGES,
-    detect_language,
-    is_filtered,
-    load_ignore_patterns,
-)
 from hooks.lib.complexity_scorer import complexity_context_note, score_file
 from hooks.lib.context import render_untrusted_file_data
+from hooks.lib.filter import RUNNER_REQUIRED_LANGUAGES, load_ignore_patterns
 from hooks.lib.history_manager import append_session_to_history
 from hooks.lib.last_failures_formatter import compute_last_failures
 from hooks.lib.scanner import sweep_mtime_changed
@@ -117,11 +112,13 @@ def main() -> None:
     # H3: append scenario log entries
     new_entries = build_scenario_entries(session)
     if new_entries:
-        session["scenario_log"] = append_to_log(session.get("scenario_log", []), new_entries)
+        session["scenario_log"] = append_to_log(
+            session.get("scenario_log", []), new_entries
+        )
         # A1: persist to cross-session history
         try:
             append_session_to_history(project_root, new_entries)
-        except Exception:
+        except Exception:  # noqa: BLE001,S110 - history persistence is best effort
             pass
 
     # H1: store complexity scores for newly qualified files
@@ -133,7 +130,7 @@ def main() -> None:
             try:
                 sc, _ = score_file(os.path.join(project_root, p))
                 scores[p] = sc
-            except Exception:
+            except Exception:  # noqa: BLE001,S110 - scoring must not block queueing
                 pass
     session["complexity_scores"] = scores
 
@@ -155,11 +152,13 @@ def main() -> None:
         if entry["path"] not in existing_paths:
             abs_path = os.path.join(project_root, entry["path"])
             status = determine_status(abs_path, project_root, touched_files)
-            pending_files.append({
-                "path": entry["path"],
-                "language": entry["language"],
-                "status": status,
-            })
+            pending_files.append(
+                {
+                    "path": entry["path"],
+                    "language": entry["language"],
+                    "status": status,
+                }
+            )
             existing_paths.add(entry["path"])
             touched_files.append(entry["path"])
             newly_queued.append(

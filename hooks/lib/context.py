@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Optional
 
 from hooks.lib.filter import RUNNER_REQUIRED_LANGUAGES, _norm
 from hooks.lib.history_manager import format_history_context
@@ -46,7 +45,7 @@ def get_test_file_path(
     language: str,
     runners: dict,
     project_root: str,
-) -> Optional[str]:
+) -> str | None:
     """Return the absolute path of the expected test file for a source file."""
     rel_path = _norm(rel_path)
     runner_info = runners.get(language)
@@ -93,7 +92,9 @@ def get_test_file_path(
                 return _norm(candidate)
         is_feature = "/Http/" in rel_path or "/Controllers/" in rel_path
         if is_feature:
-            feature_dir = runner_info.get("feature_test_dir", "tests/Feature").rstrip("/\\")
+            feature_dir = runner_info.get("feature_test_dir", "tests/Feature").rstrip(
+                "/\\"
+            )
             return _norm(os.path.join(project_root, feature_dir, test_filename))
         unit_dir = runner_info.get("unit_test_dir", "tests/Unit").rstrip("/\\")
         return _norm(os.path.join(project_root, unit_dir, test_filename))
@@ -148,11 +149,11 @@ def build_context_note(
     language: str,
     pending_count: int,
     runners: dict,
-    project_root: Optional[str] = None,
-    existing_test_path: Optional[str] = None,
+    project_root: str | None = None,
+    existing_test_path: str | None = None,
 ) -> str:
     """Build the one-line context note for a new-file queued via Stop hook."""
-    runner_name: Optional[str] = None
+    runner_name: str | None = None
     if language in runners:
         runner_name = runners[language].get("command")
     elif runners:
@@ -199,7 +200,7 @@ def build_context_note(
     return ". ".join(parts) + "."
 
 
-def build_bootstrap_note(runners: dict) -> Optional[str]:
+def build_bootstrap_note(runners: dict) -> str | None:
     """Return a bootstrap instruction if any runner needs setup, else None."""
     notes: list[str] = []
     for lang, info in runners.items():
@@ -276,6 +277,7 @@ def build_startup_context(
         lines.append(bootstrap)
 
     from hooks.lib.style import build_style_context
+
     style_ctx = build_style_context(project_root, runners)
     if style_ctx:
         lines.append("")
@@ -308,8 +310,12 @@ def build_compact_context(
 
     if pending_files:
         pending_paths = ", ".join(p["path"] for p in pending_files)
-        lines.append(f"tailtest: {len(pending_files)} file(s) pending from before compaction: {pending_paths}.")
-        lines.append("Read .tailtest/session.json and process pending files before responding to the user.")
+        lines.append(
+            f"tailtest: {len(pending_files)} file(s) pending from before compaction: {pending_paths}."
+        )
+        lines.append(
+            "Read .tailtest/session.json and process pending files before responding to the user."
+        )
     if fix_attempts:
         attempts_text = ", ".join(f"{k}: {v}" for k, v in fix_attempts.items())
         lines.append(f"tailtest: fix attempts this session: {attempts_text}.")
