@@ -63,17 +63,52 @@ find_path_executable() {
   return 1
 }
 
-if ! READLINK_BIN="$(find_path_executable readlink reject_symlinks)"; then
-  echo "error: unable to resolve a trusted readlink executable"
-  exit 1
+resolve_gnu_readlink() {
+  local executable candidate
+
+  for executable in readlink greadlink; do
+    while IFS= read -r candidate; do
+      if "$candidate" -f / >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done < <(find_path_executable "$executable" reject_symlinks)
+  done
+  return 1
+}
+
+if ! READLINK_BIN="$(resolve_gnu_readlink)"; then
+  READLINK_BIN=""
 fi
+
+canonicalize_executable_candidate() {
+  local candidate="$1"
+  local candidate_dir candidate_base canonical_dir
+
+  if [ -n "$READLINK_BIN" ]; then
+    "$READLINK_BIN" -f -- "$candidate" 2>/dev/null
+    return $?
+  fi
+
+  # BSD/macOS readlink does not support -f. Without a trusted full file
+  # canonicalizer, reject symlink executables and safely canonicalize the
+  # containing directory only.
+  if [ -L "$candidate" ]; then
+    return 1
+  fi
+
+  candidate_dir="${candidate%/*}"
+  candidate_base="${candidate##*/}"
+  canonical_dir="$(cd -P -- "$candidate_dir" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s\n' "$canonical_dir" "$candidate_base"
+}
 
 resolve_trusted_executable() {
   local executable="$1"
   local candidate canonical_candidate
 
   while IFS= read -r candidate; do
-    canonical_candidate="$("$READLINK_BIN" -f -- "$candidate" 2>/dev/null)" || continue
+    canonical_candidate="$(canonicalize_executable_candidate "$candidate")" || continue
     case "$canonical_candidate" in
       /*) ;;
       *) continue ;;
