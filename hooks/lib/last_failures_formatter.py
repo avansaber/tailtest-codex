@@ -20,9 +20,13 @@ def compute_last_failures(session: dict) -> list[dict]:
     for source_path in generated_tests:
         attempts = fix_attempts.get(source_path, 0)
         if source_path in deferred_paths:
-            failures.append({"file": source_path, "status": "unresolved", "attempts": attempts})
+            failures.append(
+                {"file": source_path, "status": "unresolved", "attempts": attempts}
+            )
         elif attempts > 0:
-            failures.append({"file": source_path, "status": "fixed", "attempts": attempts})
+            failures.append(
+                {"file": source_path, "status": "fixed", "attempts": attempts}
+            )
     return failures
 
 

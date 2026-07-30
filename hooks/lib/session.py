@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Optional
+import time
 
 from hooks.lib.filter import _norm
 
@@ -43,7 +43,15 @@ def save_session(project_root: str, session: dict) -> None:
         fh.write("\n")
 
 
-def is_git_tracked(file_path: str, project_root: str) -> Optional[bool]:
+def rebase_turn_timestamps(session: dict, now: float | None = None) -> None:
+    """Reset per-turn mtime watermarks for a fresh post-compaction baseline."""
+    if now is None:
+        now = time.time()
+    session["turn_start_mtime"] = now
+    session["post_tool_last_fire_mtime"] = now
+
+
+def is_git_tracked(file_path: str, project_root: str) -> bool | None:
     """Return True if tracked by git, False if untracked, None if git unavailable."""
     if not os.path.isdir(os.path.join(project_root, ".git")):
         return None
@@ -53,6 +61,7 @@ def is_git_tracked(file_path: str, project_root: str) -> Optional[bool]:
             capture_output=True,
             cwd=project_root,
             timeout=2,
+            check=False,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -79,19 +88,18 @@ def determine_status(
 def find_package_root(
     rel_path: str,
     packages: dict,
-) -> Optional[str]:
+) -> str | None:
     """Return the relative path of the deepest package containing rel_path.
 
     packages: dict keyed by package relative paths (e.g. 'packages/web').
     Returns the key of the best match, or None if no package contains the file.
     """
     rel_path = _norm(rel_path)
-    best: Optional[str] = None
+    best: str | None = None
     best_len = -1
     for pkg_rel in packages:
         pkg_prefix = _norm(pkg_rel).rstrip("/") + "/"
-        if rel_path.startswith(pkg_prefix):
-            if len(pkg_prefix) > best_len:
-                best_len = len(pkg_prefix)
-                best = pkg_rel
+        if rel_path.startswith(pkg_prefix) and len(pkg_prefix) > best_len:
+            best_len = len(pkg_prefix)
+            best = pkg_rel
     return best

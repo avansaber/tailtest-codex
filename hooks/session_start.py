@@ -11,6 +11,7 @@ startup / resume:
 
 compact:
   - Re-injects AGENTS.md so the model has instructions after compaction
+  - Re-bases turn watermarks so later sweeps only see post-compaction edits
   - Re-emits session state summary from .tailtest/session.json
 
 Target: < 2 seconds for startup, < 1 second for compact.
@@ -34,6 +35,7 @@ from hooks.lib.context import (
 )
 from hooks.lib.ramp_up import _write_orphaned_report, is_first_session, ramp_up_scan
 from hooks.lib.runners import create_session, read_depth, scan_runners
+from hooks.lib.session import rebase_turn_timestamps, save_session
 
 
 def main() -> None:
@@ -50,9 +52,9 @@ def main() -> None:
     # Resolve plugin root: CLAUDE_PLUGIN_ROOT env var (Claude Code compat),
     # CODEX_PLUGIN_ROOT env var, or parent directory of this file.
     plugin_root = (
-        os.environ.get("CODEX_PLUGIN_ROOT") or
-        os.environ.get("CLAUDE_PLUGIN_ROOT") or
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        os.environ.get("CODEX_PLUGIN_ROOT")
+        or os.environ.get("CLAUDE_PLUGIN_ROOT")
+        or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
 
     agents_md = read_agents_md(plugin_root)
@@ -76,6 +78,13 @@ def main() -> None:
                 with open(session_path) as fh:
                     session = json.load(fh)
             except (json.JSONDecodeError, OSError):
+                pass
+
+        if session:
+            rebase_turn_timestamps(session)
+            try:
+                save_session(project_root, session)
+            except OSError:
                 pass
 
         runners = session.get("runners", {})
@@ -103,11 +112,13 @@ def main() -> None:
             try:
                 ramp_up_scan(project_root, runners, session)
                 ramp_up_count = len(session.get("pending_files", []))
-            except Exception:
+            except Exception:  # noqa: BLE001 - ramp-up is optional and must not block startup
                 ramp_up_count = 0  # Never crash startup
 
         context = build_startup_context(
-            project_root, runners, depth,
+            project_root,
+            runners,
+            depth,
             ramp_up_count=ramp_up_count,
         )
 
@@ -115,13 +126,15 @@ def main() -> None:
         # Codex SessionStart: emit via hookSpecificOutput.additionalContext
         # (unlike Claude Code which uses plain stdout for SessionStart).
         # If this format does not inject, fall back to plain stdout as well.
-        output = json.dumps({
-            "suppressOutput": True,
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": context,
-            },
-        })
+        output = json.dumps(
+            {
+                "suppressOutput": True,
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": context,
+                },
+            }
+        )
         print(output)
 
 

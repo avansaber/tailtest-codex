@@ -2,13 +2,42 @@
 
 from __future__ import annotations
 
+import json
 import os
-from typing import Optional
 
 from hooks.lib.filter import RUNNER_REQUIRED_LANGUAGES, _norm
 from hooks.lib.history_manager import format_history_context
 from hooks.lib.last_failures_formatter import format_last_failures
 from hooks.lib.session import load_session
+
+_MAX_UNTRUSTED_JSON_CHARS = 3000
+_MAX_CONTEXT_ITEMS = 5
+
+
+def render_untrusted_file_data(entries: list[dict]) -> str:
+    """Render repository-derived file metadata as bounded JSON data."""
+    payload = [
+        {
+            "path": entry.get("path", ""),
+            "status": entry.get("status", ""),
+            "hint": entry.get("hint", ""),
+        }
+        for entry in entries[:_MAX_CONTEXT_ITEMS]
+        if isinstance(entry, dict)
+        and isinstance(entry.get("path"), str)
+        and isinstance(entry.get("status", ""), str)
+        and isinstance(entry.get("hint", ""), str)
+    ]
+    encoded = json.dumps(payload, ensure_ascii=True)
+    if len(encoded) <= _MAX_UNTRUSTED_JSON_CHARS:
+        return encoded
+    return json.dumps(
+        {
+            "item_count": len(entries),
+            "details_omitted": "untrusted file data exceeded the display budget",
+        },
+        ensure_ascii=True,
+    )
 
 
 def get_test_file_path(
@@ -16,8 +45,9 @@ def get_test_file_path(
     language: str,
     runners: dict,
     project_root: str,
-) -> Optional[str]:
+) -> str | None:
     """Return the absolute path of the expected test file for a source file."""
+    rel_path = _norm(rel_path)
     runner_info = runners.get(language)
     if not runner_info and runners and language not in RUNNER_REQUIRED_LANGUAGES:
         runner_info = next(iter(runners.values()))
@@ -33,10 +63,10 @@ def get_test_file_path(
         source_dir = os.path.dirname(rel_path)
         test_filename = f"{basename}_test.go"
         if source_dir:
-            return os.path.join(project_root, source_dir, test_filename)
-        return os.path.join(project_root, test_filename)
+            return _norm(os.path.join(project_root, source_dir, test_filename))
+        return _norm(os.path.join(project_root, test_filename))
 
-    test_location = runner_info.get("test_location", "tests/").rstrip("/")
+    test_location = runner_info.get("test_location", "tests/").rstrip("/\\")
 
     if language == "python":
         test_filename = f"test_{basename}.py"
@@ -59,17 +89,19 @@ def get_test_file_path(
         for subdir in ("tests/Unit", "tests/Feature", "tests"):
             candidate = os.path.join(project_root, subdir, test_filename)
             if os.path.exists(candidate):
-                return candidate
+                return _norm(candidate)
         is_feature = "/Http/" in rel_path or "/Controllers/" in rel_path
         if is_feature:
-            feature_dir = runner_info.get("feature_test_dir", "tests/Feature").rstrip("/")
-            return os.path.join(project_root, feature_dir, test_filename)
-        unit_dir = runner_info.get("unit_test_dir", "tests/Unit").rstrip("/")
-        return os.path.join(project_root, unit_dir, test_filename)
+            feature_dir = runner_info.get("feature_test_dir", "tests/Feature").rstrip(
+                "/\\"
+            )
+            return _norm(os.path.join(project_root, feature_dir, test_filename))
+        unit_dir = runner_info.get("unit_test_dir", "tests/Unit").rstrip("/\\")
+        return _norm(os.path.join(project_root, unit_dir, test_filename))
     else:
         return None
 
-    return os.path.join(project_root, test_location, test_filename)
+    return _norm(os.path.join(project_root, test_location, test_filename))
 
 
 def detect_framework_context(
@@ -117,11 +149,11 @@ def build_context_note(
     language: str,
     pending_count: int,
     runners: dict,
-    project_root: Optional[str] = None,
-    existing_test_path: Optional[str] = None,
+    project_root: str | None = None,
+    existing_test_path: str | None = None,
 ) -> str:
     """Build the one-line context note for a new-file queued via Stop hook."""
-    runner_name: Optional[str] = None
+    runner_name: str | None = None
     if language in runners:
         runner_name = runners[language].get("command")
     elif runners:
@@ -168,7 +200,7 @@ def build_context_note(
     return ". ".join(parts) + "."
 
 
-def build_bootstrap_note(runners: dict) -> Optional[str]:
+def build_bootstrap_note(runners: dict) -> str | None:
     """Return a bootstrap instruction if any runner needs setup, else None."""
     notes: list[str] = []
     for lang, info in runners.items():
@@ -245,6 +277,7 @@ def build_startup_context(
         lines.append(bootstrap)
 
     from hooks.lib.style import build_style_context
+
     style_ctx = build_style_context(project_root, runners)
     if style_ctx:
         lines.append("")
@@ -277,8 +310,12 @@ def build_compact_context(
 
     if pending_files:
         pending_paths = ", ".join(p["path"] for p in pending_files)
-        lines.append(f"tailtest: {len(pending_files)} file(s) pending from before compaction: {pending_paths}.")
-        lines.append("Read .tailtest/session.json and process pending files before responding to the user.")
+        lines.append(
+            f"tailtest: {len(pending_files)} file(s) pending from before compaction: {pending_paths}."
+        )
+        lines.append(
+            "Read .tailtest/session.json and process pending files before responding to the user."
+        )
     if fix_attempts:
         attempts_text = ", ".join(f"{k}: {v}" for k, v in fix_attempts.items())
         lines.append(f"tailtest: fix attempts this session: {attempts_text}.")
