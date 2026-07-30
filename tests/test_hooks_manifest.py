@@ -281,6 +281,14 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
     )
     if outside_bin_lookup.returncode != 0 or not outside_bin_lookup.stdout.strip():
         pytest.skip("cygpath is unavailable to bash")
+    project_lookup = subprocess.run(
+        [bash, "-lc", 'cygpath -u "$TAILTEST_PROJECT_DIR"'],
+        env={**os.environ, "TAILTEST_PROJECT_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    if project_lookup.returncode != 0 or not project_lookup.stdout.strip():
+        pytest.skip("cygpath is unavailable to bash")
 
     outside_python_bash = f"{outside_bin_lookup.stdout.strip()}/python3"
     link_result = subprocess.run(
@@ -351,7 +359,11 @@ def test_initializer_tolerates_non_gnu_readlink(tmp_path, tmp_path_factory):
 
     env = os.environ.copy()
     env["PATH"] = os.pathsep.join(
-        [str(outside_bin), str(tmp_path), env.get("PATH", "")]
+        [
+            outside_bin_lookup.stdout.strip(),
+            project_lookup.stdout.strip(),
+            env.get("PATH", ""),
+        ]
     )
     env["TAILTEST_INIT_MARKER"] = str(marker)
     env["TAILTEST_READLINK_MARKER"] = str(readlink_marker)
