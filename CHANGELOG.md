@@ -21,7 +21,7 @@ Triggered by `tailtest-codex#5` (thanks to `@internet-dot` for the report and th
 
 ## [4.9.0] -- 2026-05-19
 
-PostToolUse migration. Per-edit feedback alongside the existing turn-end Stop sweep. 400 tests (was 380; +20 PostToolUse tests).
+PostToolUse migration. Per-edit feedback alongside the existing turn-end Stop sweep.
 
 **New `hooks/post_tool_use.py`:**
 - Fires after every file-mutating Codex tool call (`apply_patch`, `patch`, plus shell-style tools via mtime fallback).
